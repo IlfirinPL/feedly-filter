@@ -1,0 +1,30 @@
+# Example configuration. The app creates data/config.yaml with defaults on first start;
+# copy this file there to start from a filled-in example.
+version: 1
+timezone: Europe/Warsaw
+dry_run: true              # true: runs only report what would be marked
+history_limit_mb: 100
+aging:
+  enabled: true
+  days: 7                  # entries older than this (by publication date) are marked as read
+global_rules:
+  - field: title           # title, content, author or url
+    op: contains           # contains, starts_with, equals or regex (case-insensitive)
+    value: sponsored
+    enabled: true
+    comment: ads
+global_whitelist: []
+folders:
+  - name: Tech
+    aging_days: null       # null inherits the global aging setting
+    rules: []
+    whitelist: []
+feeds:
+  - id: "feed/https://example.com/rss"
+    name: Example
+    folder: Tech
+    interval_minutes: 60
+    aging_days: null
+    override: false        # false: use the folder rules; true: use only this feed's rules
+    rules: []
+    whitelist: []

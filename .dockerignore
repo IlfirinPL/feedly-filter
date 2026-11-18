@@ -1,0 +1,15 @@
+# Only what the image build needs; keeps data, secrets and the local venv out of the build context.
+.git
+.github
+.venv
+.vscode
+.pytest_cache
+__pycache__
+*.pyc
+*.egg-info
+build
+dist
+data
+docs
+scripts
+tests

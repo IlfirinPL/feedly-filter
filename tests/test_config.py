@@ -57,6 +57,15 @@ def test_out_of_range_interval_in_file_is_rejected(tmp_path):
         ConfigStore(path)
 
 
+def test_example_config_stays_valid():
+    from pathlib import Path
+
+    example = Path(__file__).resolve().parent.parent / "data" / "config.example.yaml"
+    config = Config.model_validate(yaml.safe_load(example.read_text(encoding="utf-8")))
+    assert config.dry_run is True
+    assert config.feeds[0].folder == "Tech"
+
+
 def test_feed_interval_has_minimum():
     with pytest.raises(Exception):
         FeedSettings(id="x", interval_minutes=1)
