@@ -1,0 +1,24 @@
+# Dane wrażliwe i stan lokalny z katalogu data/
+data/*
+!data/.gitkeep
+!data/config.example.yaml
+
+# Dane logowania i sesja Feedly
+data/auth.yaml
+data/session.json
+data/secrets.env
+
+# Historia (SQLite)
+data/history.db
+data/history.db-*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Build artifacts
+*.egg-info/
+build/
+dist/
