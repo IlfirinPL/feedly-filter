@@ -101,5 +101,6 @@ def decide(item: dict, effective_settings: Effective, now: datetime) -> Decision
         return Decision(True, f"aging older than {days} d")
     for rule, source in effective_settings.rules:
         if matches(rule, fields):
-            return Decision(True, f"rule ({source}): {rule.field} {rule.op} {rule.value!r}")
+            reason = f"rule ({source}): {rule.field} {rule.op} {rule.value!r}"
+            return Decision(True, f"{reason} - {rule.comment}" if rule.comment else reason)
     return Decision(False, "no match")

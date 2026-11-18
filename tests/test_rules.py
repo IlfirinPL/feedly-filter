@@ -112,3 +112,9 @@ def test_saved_entries_are_never_marked():
 def test_no_match_keeps_entry_unread():
     config = Config(global_rules=[Rule(value="nomatch")])
     assert not decide(item("fresh news"), effective(config, None, ""), NOW).mark
+
+
+def test_reason_names_the_rule_and_its_comment():
+    config = Config(global_rules=[Rule(value="sponsored", comment="ads")])
+    decision = decide(item("SPONSORED offer"), effective(config, None, ""), NOW)
+    assert decision == Decision(True, "rule (global): title contains 'sponsored' - ads")

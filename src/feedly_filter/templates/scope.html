@@ -49,11 +49,27 @@
   <input name="value" required size="40" placeholder="value (case-insensitive)">
   <input name="comment" size="20" placeholder="comment">
   <button>{{ label }}</button>
+  <button formaction="/scope/preview" formmethod="post">Preview matches</button>
 </form>
 {% endmacro %}
 
 {% block content %}
 <h1>{{ heading }}</h1>
+{% if preview %}
+<div class="msg">
+  Rule <code>{{ rule.field }} {{ rule.op }} {{ rule.value }}</code> would mark
+  <strong>{{ preview.matches }}</strong> unread entries across {{ preview.feeds_scanned }} feed(s) right now.
+  Not saved yet.
+</div>
+{% if preview.samples %}
+<table>
+  <tr><th>Feed</th><th>Entry</th></tr>
+  {% for feed_title, entry_title in preview.samples %}
+  <tr><td>{{ feed_title }}</td><td>{{ entry_title }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endif %}
 {% if kind == "feed" %}
 <p class="muted">Folder: {{ folder or "—" }} · id: <code>{{ key }}</code></p>
 <form method="post" action="/scope" class="inline">

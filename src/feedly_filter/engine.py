@@ -5,13 +5,13 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from .client import AuthError, FeedlyClient, FeedlyError
-from .config import ConfigStore
+from .config import ConfigStore, Rule
 from .history import History
-from .rules import Decision, decide, effective, entry_fields, published_at
+from .rules import Decision, decide, effective, entry_fields, is_saved, matches, published_at
 from .session import SessionStore
 
 log = logging.getLogger(__name__)
@@ -39,6 +39,30 @@ class FeedResult:
     error: str
 
 
+@dataclass
+class _FeedRun:
+    """One feed's part of a run: collected entries waiting for the batch mark."""
+
+    info: FeedInfo
+    run_id: int
+    processed: int = 0
+    error: str = ""
+    ids: list[str] = field(default_factory=list)
+    rows: list[tuple[str, str, str, str, str, str, str]] = field(default_factory=list)
+
+    def fail(self, message: str) -> None:
+        self.error = self.error or message
+        self.ids = []
+        self.rows = []  # nothing was marked, so nothing is recorded as marked
+
+
+@dataclass(frozen=True)
+class PreviewResult:
+    feeds_scanned: int
+    matches: int
+    samples: list[tuple[str, str]]  # (feed title, entry title)
+
+
 def folder_of(subscription: dict) -> str:
     categories = subscription.get("categories") or []
     if categories and isinstance(categories[0], dict):
@@ -52,14 +76,16 @@ class Engine:
         store: ConfigStore,
         session: SessionStore,
         history: History,
-        client_factory: Callable[[dict[str, str]], FeedlyClient] = FeedlyClient,
+        client_factory: Callable[[dict[str, str]], FeedlyClient] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         catalog_ttl: timedelta = timedelta(minutes=10),
     ):
         self.store = store
         self.session = session
         self.history = history
-        self.client_factory = client_factory
+        # The default client counts every request in the history database.
+        self.client_factory = client_factory or (
+            lambda headers: FeedlyClient(headers, on_request=history.record_request))
         self.clock = clock
         self.catalog_ttl = catalog_ttl
         self.catalog: dict[str, FeedInfo] = {}
@@ -116,19 +142,60 @@ class Engine:
         finally:
             self._run_lock.release()
 
-    def run_in_background(self, feed_ids: list[str] | None = None) -> bool:
+    def is_running(self) -> bool:
+        return self._run_lock.locked()
+
+    def run_in_background(self, feed_ids: list[str] | None = None, dry_run: bool | None = None) -> bool:
         """Start a run without blocking the web request. False if a run is already active."""
-        if self._run_lock.locked():
+        if self.is_running():
             return False
 
         def target() -> None:
             try:
-                self.run(feed_ids)
+                self.run(feed_ids, dry_run)
             except (FeedlyError, RunBusy) as error:
                 log.warning("background run stopped: %s", error)
 
         threading.Thread(target=target, name="manual-run", daemon=True).start()
         return True
+
+    def preview_rule(self, scope: str, rule: Rule, sample_size: int = 10) -> PreviewResult:
+        """Count the unread entries this rule would mark now, without changing anything.
+
+        Uses the same scope rules as a real run: folder rules skip feeds that override them,
+        global rules reach every feed, and saved entries and whitelisted entries are skipped.
+        """
+        self.refresh_catalog()
+        config = self.store.config
+        kind, _, key = scope.partition("|")
+        if kind == "global":
+            feed_ids = list(self.catalog)
+        elif kind == "folder":
+            feed_ids = []
+            for feed_id, info in self.catalog.items():
+                feed = config.find_feed(feed_id)
+                if info.folder == key and not (feed is not None and feed.override):
+                    feed_ids.append(feed_id)
+        else:
+            feed_ids = [key] if key in self.catalog else []
+
+        total = 0
+        samples: list[tuple[str, str]] = []
+        with self._client() as client:
+            for feed_id in feed_ids:
+                info = self.catalog[feed_id]
+                eff = effective(config, config.find_feed(feed_id), info.folder)
+                for item in client.stream_entries(feed_id):
+                    if is_saved(item):
+                        continue
+                    fields = entry_fields(item)
+                    if any(matches(exception, fields) for exception, _ in eff.whitelist):
+                        continue
+                    if matches(rule, fields):
+                        total += 1
+                        if len(samples) < sample_size:
+                            samples.append((info.title, fields["title"]))
+        return PreviewResult(feeds_scanned=len(feed_ids), matches=total, samples=samples)
 
     def _run(self, feed_ids: list[str] | None, dry_run: bool | None) -> list[FeedResult]:
         self.store.reload()
@@ -136,39 +203,61 @@ class Engine:
         dry = config.dry_run if dry_run is None else dry_run
         self.refresh_catalog()
         targets = [self.catalog[feed_id] for feed_id in (feed_ids or self.catalog) if feed_id in self.catalog]
-        results = []
-        with self._client() as client:
-            for info in targets:
-                results.append(self._run_feed(client, info, dry))
-        self.history.prune(config.history_limit_mb * 1024 * 1024)
-        return results
-
-    def _run_feed(self, client: FeedlyClient, info: FeedInfo, dry: bool) -> FeedResult:
-        config = self.store.config
-        eff = effective(config, config.find_feed(info.id), info.folder)
         now = self.clock()
-        run_id = self.history.start_run(info.id, info.title, dry, now)
-        processed = marked = 0
-        error = ""
+        runs: list[_FeedRun] = []
         try:
-            items = client.stream_entries(info.id)
-            processed = len(items)
-            decisions = [(item, decide(item, eff, now)) for item in items]
-            to_mark = [(item, decision) for item, decision in decisions if decision.mark]
-            if to_mark and not dry:
-                client.mark_as_read([item["id"] for item, _ in to_mark])
-            self.history.add_marks(run_id, [self._mark_row(info, item, decision, dry) for item, decision in to_mark])
-            marked = len(to_mark)
+            with self._client() as client:
+                # Phase 1: read every feed and decide. Phase 2: mark all matches in one batch.
+                for info in targets:
+                    run = _FeedRun(info, self.history.start_run(info.id, info.title, dry, now))
+                    runs.append(run)
+                    self._collect(client, run, dry, now)
+                if not dry:
+                    self._apply_marks(client, runs)
         except AuthError as exc:
-            error = str(exc)
+            for run in runs:
+                run.fail(str(exc))
+            self._finish(runs, now)
+            raise
+        self._finish(runs, now)
+        self.history.prune(config.history_limit_mb * 1024 * 1024)
+        return [FeedResult(run.info.id, run.info.title, run.processed, len(run.rows), run.error) for run in runs]
+
+    def _collect(self, client: FeedlyClient, run: _FeedRun, dry: bool, now: datetime) -> None:
+        config = self.store.config
+        eff = effective(config, config.find_feed(run.info.id), run.info.folder)
+        try:
+            items = client.stream_entries(run.info.id)
+        except AuthError:
             raise
         except FeedlyError as exc:
-            error = str(exc)
-            log.warning("feed %s failed: %s", info.id, exc)
-        finally:
-            self.history.finish_run(run_id, processed, marked, error, self.clock())
-            self.history.set_last_run(info.id, now)
-        return FeedResult(info.id, info.title, processed, marked, error)
+            run.error = str(exc)
+            log.warning("feed %s failed: %s", run.info.id, exc)
+            return
+        run.processed = len(items)
+        for item in items:
+            decision = decide(item, eff, now)
+            if decision.mark:
+                run.ids.append(item["id"])
+                run.rows.append(self._mark_row(run.info, item, decision, dry))
+
+    @staticmethod
+    def _apply_marks(client: FeedlyClient, runs: list[_FeedRun]) -> None:
+        ids = [entry_id for run in runs for entry_id in run.ids]
+        if not ids:
+            return
+        try:
+            client.mark_as_read(ids)  # one batch for the whole run, sent in chunks of 100
+        except FeedlyError as exc:
+            for run in runs:
+                run.fail(str(exc))
+
+    def _finish(self, runs: list[_FeedRun], now: datetime) -> None:
+        for run in runs:
+            if run.rows:
+                self.history.add_marks(run.run_id, run.rows)
+            self.history.finish_run(run.run_id, run.processed, len(run.rows), run.error, self.clock())
+            self.history.set_last_run(run.info.id, now)
 
     @staticmethod
     def _mark_row(info: FeedInfo, item: dict, decision: Decision, dry: bool) -> tuple[str, str, str, str, str, str, str]:

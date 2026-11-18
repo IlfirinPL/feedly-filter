@@ -23,6 +23,15 @@ def test_sends_authorization_header_and_parses_json():
     assert seen["auth"] == "Bearer t"
 
 
+def test_network_error_becomes_feedly_error():
+    def handler(request):
+        raise httpx.ConnectError("certificate verify failed")
+
+    client, _ = make_client(handler)
+    with pytest.raises(FeedlyError, match="network error: ConnectError"):
+        client.profile()
+
+
 def test_401_is_auth_error_without_retry():
     calls = []
 

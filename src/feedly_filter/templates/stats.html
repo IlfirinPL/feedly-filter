@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.viz-root { color-scheme: light; --surface-1: #fcfcfb; --text-primary: #0b0b0b; --text-secondary: #52514e; --series-1: #2a78d6; --grid: #e4e3df; }
+@media (prefers-color-scheme: dark) {
+  .viz-root { color-scheme: dark; --surface-1: #1a1a19; --text-primary: #f0efec; --text-secondary: #c3c2b7; --series-1: #3987e5; --grid: #3a3a37; }
+}
+.viz-root { background: var(--surface-1); color: var(--text-primary); padding: .5rem; border-radius: 4px; }
+.viz-root svg text { fill: var(--text-secondary); font-size: 11px; }
+.viz-root .bar { fill: var(--series-1); }
+.viz-root .grid { stroke: var(--grid); }
+.viz-root .baseline { stroke: var(--text-secondary); }
+.num { text-align: right; }
+.windows a { margin-right: .8rem; }
+</style>
+
+<h1>Feedly requests</h1>
+<p class="windows">Window:
+  {% for window in windows %}
+  <a href="/stats?days={{ window }}">{% if window == days %}<strong>{{ window }} days</strong>{% else %}{{ window }} days{% endif %}</a>
+  {% endfor %}
+</p>
+<p>Requests in this window: <strong>{{ grand_total }}</strong>
+  ({% for name in outcomes %}{{ name }}: {{ totals[name] }}{% if not loop.last %}, {% endif %}{% endfor %})
+</p>
+
+<h2>Requests per day</h2>
+<div class="viz-root">
+  <svg viewBox="0 0 {{ chart.w }} {{ chart.h }}" width="100%" role="img" aria-labelledby="chart-title chart-desc">
+    <title id="chart-title">Feedly requests per day</title>
+    <desc id="chart-desc">One bar per day with the number of HTTP requests sent to Feedly. The same values are in the table below the chart.</desc>
+    {% for line in chart.grid %}
+    <line class="grid" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ line.y }}" y2="{{ line.y }}"/>
+    <text x="{{ chart.left - 6 }}" y="{{ line.y + 4 }}" text-anchor="end">{{ line.value }}</text>
+    {% endfor %}
+    {% for bar in chart.bars %}
+    <rect class="bar" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.w }}" height="{{ bar.h }}" rx="2"><title>{{ bar.day }}: {{ bar.count }} requests</title></rect>
+    {% if bar.label %}<text x="{{ bar.label_x }}" y="{{ chart.baseline + 16 }}" text-anchor="middle">{{ bar.label }}</text>{% endif %}
+    {% endfor %}
+    <line class="baseline" x1="{{ chart.left }}" x2="{{ chart.right }}" y1="{{ chart.baseline }}" y2="{{ chart.baseline }}"/>
+  </svg>
+</div>
+<details>
+  <summary>Show as table</summary>
+  <table>
+    <tr><th>Day</th><th class="num">Requests</th></tr>
+    {% for day, count in series %}
+    <tr><td>{{ day }}</td><td class="num">{{ count }}</td></tr>
+    {% endfor %}
+  </table>
+</details>
+
+<h2>By type and outcome</h2>
+<table>
+  <tr>
+    <th>Type</th>
+    {% for name in outcomes %}<th class="num">{{ name }}</th>{% endfor %}
+    <th class="num">Total</th>
+  </tr>
+  {% for row in rows %}
+  <tr>
+    <td>{{ row.label }}</td>
+    {% for name in outcomes %}<td class="num">{{ row.outcomes[name] }}</td>{% endfor %}
+    <td class="num"><strong>{{ row.total }}</strong></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="{{ outcomes|length + 2 }}" class="muted">No requests in this window</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

@@ -16,17 +16,22 @@
 <table>
   <tr><th>#</th><th>Feed</th><th>Started</th><th>Dry run</th><th>Processed</th><th>Marked</th><th>Error</th></tr>
   {% for run in runs %}
-  <tr><td>{{ run[0] }}</td><td>{{ run[1] }}</td><td>{{ run[2][:19] }}</td><td>{{ "yes" if run[4] else "no" }}</td><td>{{ run[5] }}</td><td>{{ run[6] }}</td><td>{{ run[7] }}</td></tr>
+  <tr><td>{{ run[0] }}</td><td>{{ run[1] }}</td><td>{{ run[2][:19] }}</td><td>{{ "yes" if run[4] else "no" }}</td><td>{{ run[5] }}</td>
+    <td>{% if run[6] %}<a href="/history?run={{ run[0] }}">{{ run[6] }}</a>{% else %}0{% endif %}</td><td>{{ run[7] }}</td></tr>
   {% else %}
   <tr><td colspan="7" class="muted">No runs yet</td></tr>
   {% endfor %}
 </table>
 
-<h2>Entries</h2>
+<h2>{% if run_id %}Entries marked by run #{{ run_id }} <a href="/history">(show all)</a>{% else %}Entries{% endif %}</h2>
+<style>
+  tr.by-aging td { background: #f1f1ef; }
+</style>
+<p class="muted">Grey rows were marked by aging (older than N days), not by a blacklist rule.</p>
 <table>
-  <tr><th>Feed</th><th>Title</th><th>Published</th><th>Reason</th><th>Action</th></tr>
+  <tr><th>Feed</th><th>Title</th><th>Published</th><th>Rule that matched</th><th>Action</th></tr>
   {% for feed_name, entry_id, title, published, reason, action in marks %}
-  <tr>
+  <tr class="{% if reason.startswith('aging') %}by-aging{% endif %}">
     <td>{{ feed_name }}</td><td>{{ title }}</td><td>{{ published[:16] }}</td><td>{{ reason }}</td>
     <td>{% if action == "would_mark" %}<span class="dry">would mark</span>{% else %}marked{% endif %}</td>
   </tr>

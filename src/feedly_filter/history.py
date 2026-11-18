@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCHEMA = """
@@ -35,6 +35,13 @@ create index if not exists marks_run on marks(run_id);
 create table if not exists feed_state (
     feed_id text primary key,
     last_run text not null
+);
+create table if not exists requests (
+    day text not null,
+    kind text not null,
+    status integer not null,
+    count integer not null default 0,
+    primary key (day, kind, status)
 );
 """
 
@@ -104,14 +111,45 @@ class History:
                 (limit,),
             ).fetchall()
 
-    def recent_marks(self, feed_id: str | None = None, limit: int = 200) -> list[tuple]:
-        query = "select feed_name, entry_id, title, published, reason, action from marks"
-        params: tuple = ()
+    def recent_marks(self, feed_id: str | None = None, run_id: int | None = None, limit: int = 200) -> list[tuple]:
+        clauses, params = [], []
         if feed_id:
-            query += " where feed_id = ?"
-            params = (feed_id,)
+            clauses.append("feed_id = ?")
+            params.append(feed_id)
+        if run_id is not None:
+            clauses.append("run_id = ?")
+            params.append(run_id)
+        where = f" where {' and '.join(clauses)}" if clauses else ""
+        query = "select feed_name, entry_id, title, published, reason, action from marks" + where
         with self._lock:
             return self._db.execute(query + " order by id desc limit ?", (*params, limit)).fetchall()
+
+    def record_request(self, kind: str, status: int) -> None:
+        """Count one HTTP attempt. Stored per UTC day, so the table stays small."""
+        day = datetime.now(UTC).date().isoformat()
+        with self._lock:
+            self._db.execute(
+                "insert into requests (day, kind, status, count) values (?, ?, ?, 1) "
+                "on conflict(day, kind, status) do update set count = count + 1",
+                (day, kind, status),
+            )
+            self._db.commit()
+
+    def request_stats(self, since: str) -> list[tuple[str, int, int]]:
+        """(kind, status, count) for days on or after `since` (ISO date)."""
+        with self._lock:
+            return self._db.execute(
+                "select kind, status, sum(count) from requests where day >= ? group by kind, status",
+                (since,),
+            ).fetchall()
+
+    def daily_requests(self, since: str) -> list[tuple[str, int]]:
+        """(day, count) for days on or after `since` (ISO date)."""
+        with self._lock:
+            return self._db.execute(
+                "select day, sum(count) from requests where day >= ? group by day order by day",
+                (since,),
+            ).fetchall()
 
     def size_bytes(self) -> int:
         return self.path.stat().st_size if self.path.exists() else 0

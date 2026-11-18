@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -153,6 +154,57 @@ def apply_scope_action(config: Config, catalog: dict[str, FeedInfo], scope: str,
     raise ValueError(f"unknown action {action!r}")
 
 
+KIND_LABELS = {
+    "profile": "Profile (session check)",
+    "subscriptions": "Subscriptions",
+    "categories": "Categories",
+    "unread_counts": "Unread counts",
+    "stream_contents": "Feed entries",
+    "mark_as_read": "Mark as read",
+    "other": "Other",
+}
+OUTCOMES = ("2xx", "4xx", "5xx / 429", "network error", "other")
+CHART_W, CHART_H = 720, 220
+PAD_L, PAD_T, PAD_R, PAD_B = 44, 12, 8, 28
+
+
+def outcome(status: int) -> str:
+    if status == 0:
+        return "network error"
+    if 200 <= status < 300:
+        return "2xx"
+    if 400 <= status < 500 and status != 429:
+        return "4xx"
+    if status == 429 or status >= 500:
+        return "5xx / 429"
+    return "other"
+
+
+def daily_bars(series: list[tuple[str, int]]) -> dict:
+    """Geometry for the inline SVG bar chart: one bar per day, scaled to the busiest day."""
+    top = max((count for _, count in series), default=0) or 1
+    plot_w = CHART_W - PAD_L - PAD_R
+    plot_h = CHART_H - PAD_T - PAD_B
+    slot = plot_w / max(len(series), 1)
+    step = max(1, -(-len(series) // 10))  # label about 10 days at most
+    bars = []
+    for index, (day, count) in enumerate(series):
+        height = count / top * plot_h
+        bars.append({
+            "x": PAD_L + index * slot + 2,
+            "y": PAD_T + plot_h - height,
+            "w": max(slot - 4, 2),
+            "h": height,
+            "day": day,
+            "count": count,
+            "label": day[5:] if index % step == 0 else "",
+            "label_x": PAD_L + index * slot + slot / 2,
+        })
+    grid = [{"y": PAD_T + plot_h * share, "value": round(top * (1 - share))} for share in (0, 0.5, 1)]
+    return {"w": CHART_W, "h": CHART_H, "bars": bars, "grid": grid, "baseline": PAD_T + plot_h,
+            "left": PAD_L, "right": CHART_W - PAD_R}
+
+
 def create_app(services: Services) -> FastAPI:
     app = FastAPI(title="feedly-filter", docs_url=None, redoc_url=None)
     store, session, history, engine = services.store, services.session, services.history, services.engine
@@ -186,16 +238,29 @@ def create_app(services: Services) -> FastAPI:
         error = refresh_catalog_message()
         return page(request, "index.html", error=error, title="Dashboard",
                     runs=history.recent_runs(15), session_status=session.status(),
-                    feed_count=len(engine.catalog))
+                    feed_count=len(engine.catalog), running=engine.is_running())
 
     @app.post("/run")
     async def run_now(request: Request):
         form = await request.form()
         feed_id = str(form.get("feed_id", ""))
-        started = engine.run_in_background([feed_id] if feed_id else None)
+        # "force" applies the marks now, even when dry-run is on; "normal" follows the dry-run setting.
+        force = form.get("mode") == "force"
+        started = engine.run_in_background([feed_id] if feed_id else None, dry_run=False if force else None)
         if not started:
             return back("/", "A run is already in progress", is_error=True)
+        if force:
+            return back("/", "Forced run started: entries will be marked as read")
         return back("/", "Run started")
+
+    @app.post("/dry-run")
+    async def toggle_dry_run(request: Request):
+        form = await request.form()
+        dry = str(form.get("state", "on")) == "on"
+        store.update(lambda config: setattr(config, "dry_run", dry))
+        if dry:
+            return back("/", "Dry run ON: runs only report, nothing is marked")
+        return back("/", "Dry run OFF: matching entries will be marked as read")
 
     @app.get("/feeds")
     def feeds(request: Request):
@@ -265,6 +330,20 @@ def create_app(services: Services) -> FastAPI:
             return back(scope_url(scope), str(error), is_error=True)
         return back(scope_url(scope), message)
 
+    @app.post("/scope/preview")
+    async def scope_preview(request: Request):
+        """Show how many unread entries the rule would mark now. Nothing is saved."""
+        form = {key: str(value) for key, value in (await request.form()).items()}
+        scope = form.get("scope", "global")
+        try:
+            rule = Rule(field=form.get("field", "title"), op=form.get("op", "contains"),
+                        value=form.get("value", ""))
+            preview = engine.preview_rule(scope, rule)
+        except (ValueError, FeedlyError) as error:
+            return back(scope_url(scope), f"Preview failed: {error}", is_error=True)
+        return page(request, "scope.html", title="Preview", preview=preview, rule=rule,
+                    **scope_view(store.config, engine.catalog, scope))
+
     @app.get("/settings")
     def settings(request: Request):
         return page(request, "settings.html", title="Settings")
@@ -291,12 +370,37 @@ def create_app(services: Services) -> FastAPI:
         return back("/settings", "Settings saved")
 
     @app.get("/history")
-    def history_page(request: Request, feed: str = ""):
+    def history_page(request: Request, feed: str = "", run: int = 0):
         error = refresh_catalog_message()
+        # A run's entries are listed in full; the default view is capped to the newest 200.
+        marks = history.recent_marks(feed or None, run_id=run or None, limit=1000 if run else 200)
         return page(request, "history.html", error=error, title="History",
-                    runs=history.recent_runs(30), marks=history.recent_marks(feed or None),
+                    runs=history.recent_runs(30), marks=marks, run_id=run,
                     selected=feed, feeds=sorted(engine.catalog.values(), key=lambda item: item.title.casefold()),
                     size_mb=round(file_size_mb(history.path), 2))
+
+    @app.get("/stats")
+    def stats_page(request: Request, days: int = 14):
+        days = min(max(days, 1), 90)
+        today = datetime.now(UTC).date()
+        since = (today - timedelta(days=days - 1)).isoformat()
+        by_kind: dict[str, dict[str, int]] = {}
+        for kind, status, count in history.request_stats(since):
+            row = by_kind.setdefault(kind, dict.fromkeys(OUTCOMES, 0))
+            row[outcome(status)] += count
+        daily = dict(history.daily_requests(since))
+        series = []
+        for index in range(days):
+            day = (today - timedelta(days=days - 1 - index)).isoformat()
+            series.append((day, daily.get(day, 0)))
+        rows = [
+            {"label": KIND_LABELS.get(kind, kind), "outcomes": row, "total": sum(row.values())}
+            for kind, row in sorted(by_kind.items(), key=lambda item: -sum(item[1].values()))
+        ]
+        totals = {name: sum(row["outcomes"][name] for row in rows) for name in OUTCOMES}
+        return page(request, "stats.html", title="Stats", days=days, windows=(7, 14, 30, 90),
+                    rows=rows, outcomes=OUTCOMES, totals=totals, grand_total=sum(totals.values()),
+                    chart=daily_bars(series), series=series)
 
     @app.get("/login")
     def login_page(request: Request):

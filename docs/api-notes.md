@@ -21,13 +21,22 @@ Stan: potwierdzone odczytem (GET) z tokenem zapisanym w `data/session.json`. Nie
 
 Na koncie w chwili testu: 2 subskrypcje, 2 kategorie, 6 wpisów w liczbach nieprzeczytanych.
 
+## Strumień wpisów (sprawdzone, GET 200)
+
+`GET https://cloud.feedly.com/v3/streams/contents?streamId=<id>&count=<n>&unreadOnly=true[&continuation=<token>]`
+
+- Odpowiedź: obiekt `id`, `title`, `updated`, `direction`, `alternate`, `continuation` (brak, gdy to koniec), `items` (lista).
+- Każdy wpis w `items` ma m.in.: `id`, `title`, `published` (liczba całkowita, milisekundy), `unread` (bool), `alternate` (lista z `href`, czyli adres artykułu), `summary` (obiekt z `content`), `categories` (lista z `id`), `origin`, `originId`, `crawled`, `visual`, `engagement`.
+- W próbce nie ma pola `author` ani `tags`. Aplikacja czyta `author` jako pusty tekst, dopóki nie potwierdzimy innego źródła.
+- Identyfikatory: kanał `feed/<url>`, kategoria `user/<uuid>/category/<id>`. Kanał zwracany przez `/subscriptions` ma `categories` z `label`, którego aplikacja używa jako nazwy folderu.
+- Zapisane na później: aplikacja zakłada tag `…/tag/global.saved` w `categories`. To nie zostało sprawdzone na zapisanym wpisie.
+
 ## Do sprawdzenia (kolejne kroki)
 
-- `GET /v3/streams/contents?streamId=...` i `GET /v3/streams/ids?streamId=...` — pobieranie wpisów kanału i daty publikacji (FR-22).
-- `POST /v3/markers` z `action: markAsRead` — oznaczanie jako przeczytane. Dopiero po zatwierdzeniu, bo zmienia stan konta. Dry-run tego nie wykonuje.
-- Czy wpis zapisany na później (`saved`/`starred`) jest widoczny w strumieniu i jak go rozpoznać (FR-25).
-- Format `streamId` dla kategorii (`user/<id>/category/<id>`) i dla kanału (`feed/<url>`).
-- Ważność tokenu i mechanizm odświeżania (FR-3a).
+- `POST /v3/markers` z `action: markAsRead` — oznaczanie jako przeczytane. Zmienia stan konta, więc dopiero po zatwierdzeniu. Dry-run tego nie wykonuje. Jeden przebieg wysyła wszystkie identyfikatory z wszystkich kanałów w paczkach po 100 (`entryIds`). Aplikacja wysyła ten kształt, ale nie został zweryfikowany na web API.
+- Czy wpis zapisany na później ma tag `global.saved` w `categories` i czy da się go znaleźć w strumieniu.
+- Znaczenie `velocity` w `/subscriptions` (zakładane: średnia liczba wpisów dziennie).
+- Ważność tokenu i mechanizm odświeżania (FR-3a). Bez `refresh_token` i `client_id` nie da się tego sprawdzić.
 
 ## Ryzyko
 

@@ -1,6 +1,6 @@
 # feedly-filter — wymagania
 
-Status: **v0.3 — dodane dziedziczenie reguł folder → kanał (sekcja 3.4a)**. Pozycje w sekcji „Założenia" wymagają jeszcze potwierdzenia.
+Status: **v0.4 — implementacja rdzenia i GUI (sekcja 13), dopisane podgląd reguł, wymuszony przebieg i szczegóły przebiegu**. Pozycje w sekcji „Założenia" wymagają jeszcze potwierdzenia.
 
 ## 1. Cel
 
@@ -45,6 +45,7 @@ Konfiguracja jest przechowywana w katalogu `data/`. Narzędzie działa w Dockerz
 - FR-3b: Przed każdym przebiegiem narzędzie sprawdza ważność tokenu (czas wygaśnięcia lub próba zapytania); gdy token wygasa, odświeża go zapisanym mechanizmem i zapisuje nowy stan do `data/session.json`.
 - FR-3c: Logowanie headless (i ewentualna interwencja z FR-5a) jest wykonywane tylko wtedy, gdy zapisany token nie istnieje lub odświeżanie zawiedzie.
 - FR-3d: `data/session.json` zawiera wartości tokenów i cookies; nie są one wypisywane w logach ani w GUI (GUI pokazuje tylko status: aktywna / wygasa o / odświeżona o).
+- FR-3e: Token wklejony w GUI jest sprawdzany jednym odczytem (`/profile`) przed zapisem. Odrzucony lub nieosiągalny token nie jest zapisywany.
 - FR-4: Dane logowania i sesja nie trafiają do logów ani do repozytorium. Logi maskują wartości cookies.
 - FR-5: Nieudane logowanie (np. zmiana formularza, CAPTCHA, 2FA) jest widoczne w GUI i w logach z czytelnym komunikatem; przebieg kończy się błędem, bez zawieszania procesu.
 - FR-5a: Gdy logowanie wymaga interwencji użytkownika (CAPTCHA, kod 2FA, nieznany ekran, błąd formularza), przebieg **nie kończy się od razu** — wynik kierowany jest na stronę w GUI („Login assist”): zrzut ekranu aktualnego stanu przeglądarki, treść problemu oraz pola do reakcji (kod 2FA, wklejenie cookies sesji, przycisk „Ponów”).
@@ -100,16 +101,22 @@ Konfiguracja jest przechowywana w katalogu `data/`. Narzędzie działa w Dockerz
 ### 3.6 Przebiegi i dry-run
 
 - FR-26: Tryb **dry-run**: przebieg nie zmienia stanu w Feedly. Wynik to lista: kanał, tytuł wpisu, data publikacji, powód (reguła / aging / wyjątek). Dostępny z GUI oraz jako zmienna środowiskowa/ustawienie w `config.yaml`.
-- FR-27: Dry-run jest **domyślnie włączony** przy pierwszym uruchomieniu; wyłączenie wymaga świadomej zmiany w GUI lub w configu.
+- FR-27: Dry-run jest **domyślnie włączony** przy pierwszym uruchomieniu; wyłączenie wymaga świadomej zmiany w GUI lub w configu. Przełącznik „Dry run: ON/OFF” na dashboardzie zmienia to samo ustawienie co strona Settings. Przełączenie na OFF wymaga potwierdzenia.
 - FR-28: Nie więcej niż jeden przebieg naraz dla tego samego kanału (blokada).
 - FR-29: Każdy przebieg zapisuje podsumowanie: czas, kanał, liczba przetworzonych wpisów, liczba oznaczonych wg reguły, wg agingu, liczba błędów.
 - FR-30: Oznaczanie jest idempotentne — ponowny przebieg nie oznacza ponownie tych samych wpisów.
+- FR-30a: Wymuszony przebieg („Force run") stosuje oznaczenia od razu, nawet gdy dry-run jest włączony. Wymaga potwierdzenia w GUI.
+- FR-30b: Podgląd reguły („Preview matches") przed zapisem pokazuje, ile aktualnie nieprzeczytanych wpisów reguła oznaczyłaby, z przykładowymi tytułami. Zakres liczy się jak przy przebiegu (wpisy zapisane i wyjątki pomijane, reguła folderu nie dotyczy kanałów z własnymi regułami). Aging nie jest wliczany. Podgląd niczego nie zmienia.
+- FR-30c: Powód oznaczenia zawiera regułę (pole, operator, wartość) i jej komentarz, jeśli został podany.
 
 ### 3.7 Historia i logi
 
 - FR-31: Historia (przebiegi i oznaczone wpisy: tytuł, kanał, powód, czas) przechowywana w **SQLite** w `data/history.db`.
 - FR-32: **Limit rozmiaru bazy: 100 MB.** Po przekroczeniu najstarsze rekordy są usuwane (przycinanie) i wykonywany jest `VACUUM`. Przycinanie sprawdzane po każdym przebiegu.
 - FR-33: Historia dostępna w GUI (filtr po kanale i dacie).
+- FR-33a: Liczba oznaczonych w przebiegu na dashboardzie i w historii jest linkiem do listy wpisów tego przebiegu. Każdy wpis pokazuje regułę, która go oznaczyła. Wpisy oznaczone przez aging są na liście szare, żeby odróżnić je od oznaczeń regułami.
+- FR-33b: Statystyki żądań: liczba wykonanych żądań do Feedly z podziałem na typ (profil, kanały, liczniki, wpisy kanału, oznaczanie) i na wynik (2xx, 4xx, 5xx/429, błąd sieci, inne). Liczenie dotyczy każdej próby HTTP, także ponowień. Liczniki są zapisywane w SQLite per dzień UTC, więc przetrwają restart.
+- FR-33c: Strona Stats pokazuje wykres słupkowy liczby żądań dziennie (SVG, bez zewnętrznych bibliotek) z podpowiedzią po najechaniu, tabelę tych samych wartości oraz tabelę typ × wynik. Okno: 7, 14, 30 lub 90 dni.
 - FR-34: Logi techniczne na stdout (widoczne w `docker logs`).
 
 ## 4. Eksploracja API Feedly (krok 0)
@@ -182,15 +189,16 @@ Prosty interfejs serwerowy (bez ciężkiego frontendu). Język domyślny: **angi
 
 Ekrany:
 
-1. **Dashboard** — status (połączenie/sesja Feedly, ostatni przebieg, najbliższe sprawdzenia), przyciski „Run now” i przełącznik dry-run.
+1. **Dashboard** — status (połączenie/sesja Feedly, ostatni przebieg, najbliższe sprawdzenia), przełącznik „Dry run: ON/OFF” (z potwierdzeniem przy wyłączeniu), przyciski „Run now (follows dry-run setting)” i „Force run: apply marks now” (z potwierdzeniem), informacja, gdy przebieg trwa.
 2. **Feeds** — tabela: nazwa, folder, nieprzeczytane, średnio nowych wpisów/dobę, interwał, źródło reguł (własne / folder / globalne), nadpisany aging. Zbiorowa zmiana interwału. Kliknięcie → szczegóły kanału.
-3. **Feed detail** — reguły kanału (pole, operator, wartość, aktywna), tryb „dziedzicz z folderu” lub własne, wyjątki, interwał, aging, test reguły na pobranych wpisach.
+3. **Feed detail** — reguły kanału (pole, operator, wartość, aktywna), tryb „dziedzicz z folderu” lub własne, wyjątki, interwał, aging. Przy dodawaniu reguły przycisk „Preview matches” pokazuje liczbę wpisów, które by oznaczyła (FR-30b).
 4. **Folders** — lista folderów (kategorii Feedly): reguły folderu, wyjątki, `aging_days`. Edycja reguł folderu dziedziczona przez kanały bez własnych reguł.
 5. **Global rules & whitelist** — reguły globalne i wyjątki globalne.
 6. **Aging** — globalne N dni, przełącznik.
 7. **Settings** — strefa czasowa, dry-run, limit historii (informacyjnie: 100 MB).
-8. **History** — przebiegi i oznaczone wpisy (filtr po kanale i dacie), wykorzystanie miejsca w bazie.
-9. **Login assist** — pokazuje się tylko, gdy logowanie wymaga interwencji (FR-5a): zrzut ekranu, opis problemu, pole na kod 2FA lub cookies, przycisk „Retry”. Dashboard pokazuje link do tej strony, gdy jest aktywny.
+8. **History** — przebiegi i oznaczone wpisy (filtr po kanale i dacie), link z liczby oznaczonych do listy wpisów przebiegu z regułą, wykorzystanie miejsca w bazie.
+9. **Login assist** — pokazuje się tylko, gdy logowanie wymaga interwencji (FR-5a): zrzut ekranu, opis problemu, pole na kod 2FA lub cookies, przycisk „Retry”. Dashboard pokazuje link do tej strony, gdy jest aktywny. Strona „Login” przyjmuje token i cookies, sprawdza je jednym odczytem (`/profile`) i zapisuje tylko, gdy działają (FR-3e).
+10. **Stats** — liczba żądań do Feedly per typ i wynik, wykres dzienny i tabela (FR-33b, FR-33c).
 
 Wymagania GUI:
 
@@ -250,13 +258,11 @@ Wymagania GUI:
 ## 11. Kolejne kroki
 
 1. Potwierdzić założenia z sekcji 12.
-2. Eksploracja API (sekcja 4) — `docs/api-notes.md`. Wymaga uruchomienia logowania na koncie, czyli danych od użytkownika (lokalnie, w `data/auth.yaml`).
-3. Szkielet projektu: struktura katalogów, `Dockerfile`, `docker-compose.yml`, `.gitignore`, `LICENSE`, workflow CI.
-4. Klient Feedly (logowanie headless, sesja, subskrypcje, wpisy, markers) + testy na nagranych odpowiedziach.
-5. Konfiguracja YAML, reguły, aging, interwały kanałów, dry-run.
-6. Historia SQLite z limitem 100 MB.
-7. GUI na porcie 8080.
-8. Workflowy GitHub Actions i pierwszy release `v0.1.0`.
+2. Zweryfikować na żywym koncie endpointy zapisu i pól wpisów (sekcja 13.3, `docs/api-notes.md`). Dotyczy oznaczania jako przeczytane, zapisanych wpisów i autora.
+3. Automatyczne logowanie headless (sekcja 4) — do zrobienia po rozwiązaniu problemu z Cloudflare. Do tego czasu działa wklejanie tokenu w GUI.
+4. Uruchomić workflow `docker-publish.yml` na GitHubie i sprawdzić pierwszą publikację do GHCR; zbudować obraz lokalnie, gdy Docker będzie dostępny.
+5. Uzupełnić `OWNER` w `docker-compose.yml` (nazwa użytkownika lub organizacji na GHCR).
+6. Pierwszy release `v0.1.0`.
 
 ## 12. Założenia do potwierdzenia
 
@@ -270,3 +276,33 @@ Te punkty nie były wprost rozstrzygnięte w odpowiedziach, przyjąłem je domy�
 6. Kanał należy do jednego folderu. Feedly pozwala na kilka kategorii przy jednym feedzie — przyjmuję jeden (pierwszy), do potwierdzenia.
 7. Reguły kanału **zastępują** reguły folderu (bez łączenia), reguły globalne zawsze dochodzą (FR-14c, FR-14d).
 8. `aging_days` i wyjątki dziedziczą tak samo: kanał → folder → globalnie (FR-14e).
+
+## 13. Stan implementacji (v0.4)
+
+### 13.1 Zrobione i przetestowane (52 testy, `pytest`)
+
+- Konfiguracja YAML z walidacją (pydantic), zapis atomowy, przeładowanie ręcznych zmian (sekcja 5).
+- Reguły: contains / starts_with / equals / regex, bez wielkości liter, walidacja regexa, wyjątki, dziedziczenie global → folder → kanał (3.4a), aging po dacie publikacji, wpisy zapisane na później pomijane.
+- Klient Feedly: nagłówki `Authorization` i `Cookie` z `data/session.json`, ponawianie przy 429/5xx, `AuthError` przy 401/403, błędy sieci/TLS jako `FeedlyError`, paginacja `continuation`.
+- Silnik: przebiegi per kanał, dry-run (`would_mark`), wymuszony przebieg, blokada równoległych przebiegów, wybór kanałów wg interwału, brak sesji → błąd bez zapytania do sieci. Oznaczanie zbiorcze: jeden przebieg = jedna seria żądań `markAsRead` dla wszystkich kanałów; błąd serii zapisuje się jako błąd, nie jako oznaczone.
+- Historia SQLite: przebiegi, oznaczone wpisy z regułą, czas ostatniego przebiegu, przycinanie do limitu (`VACUUM`).
+- Scheduler: co minutę uruchamia kanały, których interwał minął.
+- Statystyki żądań (FR-33b, FR-33c) i szare wiersze agingu w historii (FR-33a).
+- GUI na porcie 8080: dashboard, kanały (zbiorowy interwał), reguły kanału/folderu/globalne z podglądem, ustawienia, historia z listą wpisów przebiegu, logowanie tokenem z weryfikacją.
+- `truststore` — certyfikaty systemowe (firmowe proxy).
+- Dockerfile (Python 3.12-slim, użytkownik uid 10001, healthcheck na `/healthz`), `docker-compose.yml` (`./data` → `/data`, port 8080), `.dockerignore`, `data/config.example.yaml`, `LICENSE` (MIT), `README.md`.
+- Workflow `ci.yml` (testy `pytest` na push do `main` i na pull requestach) oraz `docker-publish.yml` (build, smoke test `/healthz`, publikacja do GHCR z tagami `latest`, `sha-…`, `X.Y.Z`, `X.Y`).
+
+### 13.2 Jeszcze nie zrobione
+
+- Automatyczne logowanie headless — w pakiecie nie ma modułu logowania; skrypt eksploracji jest w `scripts/explore_login.py`. Blokuje Cloudflare.
+- Odświeżanie tokenu (FR-3a) — mechanizm nieznany, patrz `docs/api-notes.md`.
+- Publikacja obrazu nie została jeszcze uruchomiona na GitHubie — workflow jest gotowy, ale nie testowany na prawdziwym repozytorium.
+- Obraz Dockera nie był budowany lokalnie (brak Dockera na maszynie deweloperskiej); sprawdzono tylko składnię workflowów i zawartość wheel.
+
+### 13.3 Założenia do zweryfikowania na żywym koncie
+
+- Oznaczanie jako przeczytane: `POST /v3/markers` z `action: markAsRead` (kształt z publicznej dokumentacji, nie z web API). Jeden przebieg wysyła wszystkie identyfikatory z wszystkich kanałów w paczkach po 100, nie osobne żądanie na kanał.
+- Pola wpisów: autor nie występuje w próbce strumienia; tag „zapisane na później" zakładany w `categories` (`…/tag/global.saved`).
+- `velocity` w kanałach traktowany jako średnia liczba wpisów dziennie.
+- Odczyty działają z samym tokenem (potwierdzone: `probe_api.py` wysyłał tylko `Authorization` i dostał 200). Nie sprawdzono, czy zapisy wymagają cookies.

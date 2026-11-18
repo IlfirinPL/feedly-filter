@@ -2,12 +2,33 @@
 {% block content %}
 <h1>Dashboard</h1>
 <table>
-  <tr><th>Dry run</th><td>{% if config.dry_run %}<span class="dry">ON</span>: runs only report, nothing is marked{% else %}OFF: entries are marked as read{% endif %}</td></tr>
+  <tr>
+    <th>Dry run</th>
+    <td>
+      <form method="post" action="/dry-run" class="inline"
+            onsubmit="return {% if config.dry_run %}confirm('Turn dry-run OFF? Scheduled runs will then mark entries as read in Feedly.'){% else %}true{% endif %};">
+        <input type="hidden" name="state" value="{{ 'off' if config.dry_run else 'on' }}">
+        <button class="switch {{ 'on' if config.dry_run else 'off' }}">Dry run: {{ 'ON' if config.dry_run else 'OFF' }}</button>
+      </form>
+      {% if config.dry_run %}<span class="dry">ON</span>: runs only report, nothing is marked{% else %}OFF: entries are marked as read{% endif %}
+    </td>
+  </tr>
   <tr><th>Feeds</th><td>{{ feed_count }}</td></tr>
   <tr><th>Session</th><td>{% if session_status.present %}present, updated {{ session_status.updated }}{% else %}missing, see <a href="/login">Login</a>{% endif %}</td></tr>
   <tr><th>Aging</th><td>{% if config.aging.enabled %}{{ config.aging.days }} days (by publication date){% else %}off{% endif %}</td></tr>
 </table>
-<form method="post" action="/run"><button>Run now (all feeds)</button></form>
+<p>
+  {% if running %}<span class="dry">A run is in progress…</span> Refresh this page to see the result in the table below.{% endif %}
+</p>
+<form method="post" action="/run" class="inline">
+  <input type="hidden" name="mode" value="normal">
+  <button {% if running %}disabled{% endif %}>Run now (follows dry-run setting)</button>
+</form>
+<form method="post" action="/run" class="inline"
+      onsubmit="return confirm('Mark matching entries as read in Feedly now, even with dry-run on?');">
+  <input type="hidden" name="mode" value="force">
+  <button {% if running %}disabled{% endif %}>Force run: apply marks now</button>
+</form>
 
 <h2>Recent runs</h2>
 <table>
@@ -15,7 +36,8 @@
   {% for run in runs %}
   <tr>
     <td>{{ run[0] }}</td><td>{{ run[1] }}</td><td>{{ run[2][:19] }}</td>
-    <td>{{ "yes" if run[4] else "no" }}</td><td>{{ run[5] }}</td><td>{{ run[6] }}</td><td>{{ run[7] }}</td>
+    <td>{{ "yes" if run[4] else "no" }}</td><td>{{ run[5] }}</td>
+    <td>{% if run[6] %}<a href="/history?run={{ run[0] }}">{{ run[6] }}</a>{% else %}0{% endif %}</td><td>{{ run[7] }}</td>
   </tr>
   {% else %}
   <tr><td colspan="7" class="muted">No runs yet</td></tr>

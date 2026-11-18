@@ -31,6 +31,18 @@ def test_prune_does_nothing_under_limit(tmp_path):
     history.close()
 
 
+def test_marks_can_be_filtered_by_run(tmp_path):
+    history = History(tmp_path / "history.db")
+    first = history.start_run("feed/1", "a", False, NOW)
+    second = history.start_run("feed/1", "a", False, NOW)
+    history.add_marks(first, [("feed/1", "a", "e1", "one", NOW.isoformat(), "rule (global): x", "marked")])
+    history.add_marks(second, [("feed/1", "a", "e2", "two", NOW.isoformat(), "aging", "marked")])
+    rows = history.recent_marks(run_id=first)
+    assert [row[1] for row in rows] == ["e1"]
+    assert rows[0][4] == "rule (global): x"
+    history.close()
+
+
 def test_last_run_round_trip(tmp_path):
     history = History(tmp_path / "history.db")
     history.set_last_run("feed/1", NOW)

@@ -19,6 +19,22 @@ class AuthError(FeedlyError):
     """The session is missing or expired (HTTP 401/403)."""
 
 
+REQUEST_KINDS = {
+    "/profile": "profile",
+    "/subscriptions": "subscriptions",
+    "/categories": "categories",
+    "/markers/counts": "unread_counts",
+    "/streams/contents": "stream_contents",
+}
+
+
+def request_kind(method: str, path: str) -> str:
+    """Short name of an endpoint, used for the request statistics."""
+    if path == "/markers" and method == "POST":
+        return "mark_as_read"
+    return REQUEST_KINDS.get(path, "other")
+
+
 class FeedlyClient:
     def __init__(
         self,
@@ -26,6 +42,7 @@ class FeedlyClient:
         transport: httpx.BaseTransport | None = None,
         max_retries: int = 3,
         sleep: Callable[[float], None] = time.sleep,
+        on_request: Callable[[str, int], None] | None = None,
     ):
         self._http = httpx.Client(
             headers={**headers, "Accept": "application/json"},
@@ -34,6 +51,8 @@ class FeedlyClient:
         )
         self._max_retries = max_retries
         self._sleep = sleep
+        # Called once per HTTP attempt with (kind, status); status is 0 for network errors.
+        self._on_request = on_request
 
     def __enter__(self) -> FeedlyClient:
         return self
@@ -44,10 +63,21 @@ class FeedlyClient:
     def close(self) -> None:
         self._http.close()
 
+    def _count(self, kind: str, status: int) -> None:
+        if self._on_request is not None:
+            self._on_request(kind, status)
+
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         url = f"{BASE_URL}{path}"
+        kind = request_kind(method, path)
         for attempt in range(self._max_retries + 1):
-            response = self._http.request(method, url, **kwargs)
+            try:
+                response = self._http.request(method, url, **kwargs)
+            except httpx.HTTPError as error:
+                self._count(kind, 0)
+                # Network and TLS failures become FeedlyError so the GUI and scheduler handle them.
+                raise FeedlyError(f"{method} {path} -> network error: {type(error).__name__}") from error
+            self._count(kind, response.status_code)
             if response.status_code in (401, 403):
                 raise AuthError(f"{method} {path} -> {response.status_code}")
             if response.status_code == 429 or response.status_code >= 500:

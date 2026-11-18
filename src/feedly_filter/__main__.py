@@ -6,6 +6,7 @@ import logging
 import os
 from pathlib import Path
 
+import truststore
 import uvicorn
 
 from .config import ConfigStore
@@ -27,6 +28,8 @@ def build_services(data_dir: Path) -> Services:
 
 
 def main() -> None:
+    # Use the operating system certificate store, so corporate proxies with their own CA work.
+    truststore.inject_into_ssl()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     data_dir = Path(os.environ.get("DATA_DIR", "data"))
     port = int(os.environ.get("PORT", "8080"))
