@@ -32,15 +32,17 @@ Tests: `.\.venv\Scripts\python -m pytest`
 
 ```powershell
 docker compose up -d --build      # build locally and start
-docker compose up -d              # or pull the published image (set FEEDLY_FILTER_IMAGE if needed)
+docker compose up -d              # or pull the published image (latest by default)
+$env:FEEDLY_FILTER_TAG = "0.1"; docker compose up -d   # pull a specific version
 ```
 
 The GUI is then on <http://localhost:8080>. The `./data` folder is mounted into the container, so the config,
 session and history survive restarts. The image runs as a non-root user (uid 10001); on Linux make sure that user can
 write to `./data`.
 
-Images are built and published to GitHub Container Registry by `.github/workflows/docker-publish.yml`:
-pushes to `main` publish `latest` and `sha-…`, tags `vX.Y.Z` publish `X.Y.Z` and `X.Y`. Pull requests are built and smoke-tested but not pushed.
+Images are built and published to GitHub Container Registry as `ghcr.io/<owner>/feedly-filter` by `.github/workflows/docker-publish.yml`:
+pushes to `main` publish `latest`, `main` and `sha-…`, tags `vX.Y.Z` publish `X.Y.Z` and `X.Y`. Pull requests are built and smoke-tested but not pushed.
+`FEEDLY_FILTER_TAG` selects the tag (default `latest`), e.g. `0.1`. `FEEDLY_FILTER_IMAGE` overrides the image name.
 
 ## The data folder
 

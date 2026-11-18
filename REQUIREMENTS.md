@@ -214,7 +214,7 @@ Wymagania GUI:
 - DK-1: `Dockerfile` wieloetapowy, obraz `linux/amd64`, uruchamiany jako nie-root użytkownik. Obraz zawiera Chromium (dla logowania headless), co czyni go większym — przyjęte.
 - DK-2: `docker-compose.yml`:
   - usługa `feedly-filter`,
-  - `image: ghcr.io/<owner>/feedly-filter:latest` (lub `build: .` do developmentu),
+  - `image: ghcr.io/<owner>/feedly-filter:${FEEDLY_FILTER_TAG:-latest}` (domyślnie `latest`, wersję np. `0.1` wybiera zmienna `FEEDLY_FILTER_TAG`; lub `build: .` do developmentu),
   - `ports: ["8080:8080"]`,
   - `volumes: ["./data:/data"]`,
   - `environment`: `TZ`,
@@ -230,11 +230,13 @@ Wymagania GUI:
 - CI-2: Workflow `docker-publish.yml`:
   - trigger: push na `main` oraz tagi `v*.*.*`,
   - build przez `docker/build-push-action`, logowanie do GHCR przez `GITHUB_TOKEN`,
-  - tagi: `latest` (main), `sha-<short>`, `vX.Y.Z` / `X.Y` (tagi release),
+  - obraz `ghcr.io/<owner>/feedly-filter` (nazwa stała, niezależna od nazwy repozytorium),
+  - tagi: `latest` i `main` (main), `sha-<short>`, `X.Y.Z` / `X.Y` (tagi release `vX.Y.Z`),
   - platforma: `linux/amd64`,
   - cache buildów (GitHub Actions cache).
 - CI-3: Brak sekretów w repo — publikacja wyłącznie przez `GITHUB_TOKEN` (uprawnienie `packages: write`).
 - CI-4: Opcjonalnie: skan obrazu (Trivy) przed publikacją.
+- CI-5: Akcje w workflowach są przypięte do wersji na runtime `node24` (`actions/checkout@v5`, `actions/setup-python@v6`, `docker/setup-buildx-action@v4`, `docker/build-push-action@v7`, `docker/login-action@v4`, `docker/metadata-action@v6`), żeby uniknąć ostrzeżenia o wycofaniu Node.js 20 w logach.
 
 ## 9. Wymagania niefunkcjonalne
 
