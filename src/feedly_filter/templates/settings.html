@@ -9,6 +9,15 @@
     older than <input type="number" name="days" min="0" value="{{ config.aging.days }}"> days (publication date)
   </td></tr>
   <tr><th>Timezone</th><td><input name="timezone" value="{{ config.timezone }}"></td></tr>
+  <tr><th>Working hours</th><td>
+    scheduled runs between <input type="number" name="active_from" min="0" max="23" value="{{ config.active_from }}">:00
+    and <input type="number" name="active_until" min="1" max="24" value="{{ config.active_until }}">:00
+    (local time, end not included). Manual runs are not limited.
+  </td></tr>
+  <tr><th>Default interval</th><td>
+    <input type="number" name="default_interval_minutes" min="5" value="{{ config.default_interval_minutes }}"> minutes
+    (used by feeds without their own interval)
+  </td></tr>
   <tr><th>History limit</th><td><input type="number" name="history_limit_mb" min="1" value="{{ config.history_limit_mb }}"> MB</td></tr>
 </table>
 <button>Save settings</button>

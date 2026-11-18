@@ -16,6 +16,11 @@
   <tr><th>Feeds</th><td>{{ feed_count }}</td></tr>
   <tr><th>Session</th><td>{% if session_status.present %}present, updated {{ session_status.updated }}{% else %}missing, see <a href="/login">Login</a>{% endif %}</td></tr>
   <tr><th>Aging</th><td>{% if config.aging.enabled %}{{ config.aging.days }} days (by publication date){% else %}off{% endif %}</td></tr>
+  <tr><th>Schedule</th><td>
+    every feed on its own interval (default {{ config.default_interval_minutes }} min),
+    between {{ config.active_from }}:00 and {{ config.active_until }}:00 {{ config.timezone }}:
+    {% if scheduler_active %}<strong>active now</strong>{% else %}<span class="muted">paused until working hours</span>{% endif %}
+  </td></tr>
 </table>
 <p>
   {% if running %}<span class="dry">A run is in progress…</span> Refresh this page to see the result in the table below.{% endif %}

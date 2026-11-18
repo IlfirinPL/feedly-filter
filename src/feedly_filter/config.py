@@ -7,8 +7,10 @@ import re
 import tempfile
 import threading
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, TypeVar
+from zoneinfo import ZoneInfo
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -57,7 +59,8 @@ class FeedSettings(Scope):
     id: str
     name: str = ""
     folder: str = ""
-    interval_minutes: int = Field(default=60, ge=5)
+    # None: use the default interval from Config.
+    interval_minutes: int | None = Field(default=None, ge=5)
     # False: rules and whitelist are inherited from the folder.
     # True: own rules replace the folder rules (they are not merged).
     override: bool = False
@@ -73,11 +76,35 @@ class Config(BaseModel):
     timezone: str = "Europe/Warsaw"
     dry_run: bool = True
     history_limit_mb: int = Field(default=100, ge=1)
+    # Scheduled runs happen only between these hours (local time, end is exclusive).
+    active_from: int = Field(default=7, ge=0, le=23)
+    active_until: int = Field(default=22, ge=1, le=24)
+    default_interval_minutes: int = Field(default=60, ge=5)
     aging: AgingSettings = Field(default_factory=AgingSettings)
     global_rules: list[Rule] = Field(default_factory=list)
     global_whitelist: list[Rule] = Field(default_factory=list)
     folders: list[FolderSettings] = Field(default_factory=list)
     feeds: list[FeedSettings] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def check_hours_and_timezone(self) -> Config:
+        if self.active_from >= self.active_until:
+            raise ValueError("active_from must be earlier than active_until")
+        try:
+            ZoneInfo(self.timezone)
+        except (KeyError, ValueError) as error:
+            raise ValueError(f"unknown timezone {self.timezone!r}") from error
+        return self
+
+    def is_active_hour(self, now: datetime) -> bool:
+        local = now.astimezone(ZoneInfo(self.timezone))
+        return self.active_from <= local.hour < self.active_until
+
+    def interval_for(self, feed_id: str) -> int:
+        feed = self.find_feed(feed_id)
+        if feed is not None and feed.interval_minutes is not None:
+            return feed.interval_minutes
+        return self.default_interval_minutes
 
     def find_folder(self, name: str) -> FolderSettings | None:
         return next((folder for folder in self.folders if folder.name == name), None)

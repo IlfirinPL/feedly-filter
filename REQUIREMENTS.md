@@ -61,9 +61,9 @@ Konfiguracja jest przechowywana w katalogu `data/`. Narzędzie działa w Dockerz
 
 ### 3.3 Częstotliwość sprawdzania kanałów
 
-- FR-9: Każdy kanał ma własny **interwał sprawdzania** (np. 15 min, 1 h, 6 h, 24 h). Domyślnie 1 h.
+- FR-9: Każdy kanał ma własny **interwał sprawdzania**. Domyślny interwał (60 min) ustawiany jest w Settings i obowiązuje kanały bez własnego interwału. Puste pole interwału na kanale oznacza „domyślny”.
 - FR-10: Interwał ustawiany z poziomu GUI (na kanale lub zbiorczo dla zaznaczonych kanałów) i zapisywany w `config.yaml`.
-- FR-11: Scheduler działa w krótkim cyklu (np. co minutę) i uruchamia tylko kanały, których interwał minął od ostatniego sprawdzenia.
+- FR-11: Scheduler działa w krótkim cyklu (np. co minutę) i uruchamia tylko kanały, których interwał minął od ostatniego sprawdzenia. Działa **tylko w godzinach pracy**: domyślnie 7:00–22:00 czasu lokalnego (`timezone`), koniec wyłączony. Ręczne przebiegi z GUI nie są ograniczone godzinami.
 - FR-12: Dla pomocy w doborze interwału GUI pokazuje średnią liczbę nowych wpisów na dobę dla kanału (wyliczaną z historii przebiegów).
 - FR-13: Przycisk „Uruchom teraz” działa globalnie (wszystkie kanały) lub dla pojedynczego kanału.
 
@@ -195,7 +195,7 @@ Ekrany:
 4. **Folders** — lista folderów (kategorii Feedly): reguły folderu, wyjątki, `aging_days`. Edycja reguł folderu dziedziczona przez kanały bez własnych reguł.
 5. **Global rules & whitelist** — reguły globalne i wyjątki globalne.
 6. **Aging** — globalne N dni, przełącznik.
-7. **Settings** — strefa czasowa, dry-run, limit historii (informacyjnie: 100 MB).
+7. **Settings** — strefa czasowa, dry-run, limit historii (informacyjnie: 100 MB), domyślny interwał kanałów (60 min), godziny pracy schedulera (7–22).
 8. **History** — przebiegi i oznaczone wpisy (filtr po kanale i dacie), link z liczby oznaczonych do listy wpisów przebiegu z regułą, wykorzystanie miejsca w bazie.
 9. **Login assist** — pokazuje się tylko, gdy logowanie wymaga interwencji (FR-5a): zrzut ekranu, opis problemu, pole na kod 2FA lub cookies, przycisk „Retry”. Dashboard pokazuje link do tej strony, gdy jest aktywny. Strona „Login” przyjmuje token i cookies, sprawdza je jednym odczytem (`/profile`) i zapisuje tylko, gdy działają (FR-3e).
 10. **Stats** — liczba żądań do Feedly per typ i wynik, wykres dzienny i tabela (FR-33b, FR-33c).
@@ -261,7 +261,7 @@ Wymagania GUI:
 2. Zweryfikować na żywym koncie endpointy zapisu i pól wpisów (sekcja 13.3, `docs/api-notes.md`). Dotyczy oznaczania jako przeczytane, zapisanych wpisów i autora.
 3. Automatyczne logowanie headless (sekcja 4) — do zrobienia po rozwiązaniu problemu z Cloudflare. Do tego czasu działa wklejanie tokenu w GUI.
 4. Uruchomić workflow `docker-publish.yml` na GitHubie i sprawdzić pierwszą publikację do GHCR; zbudować obraz lokalnie, gdy Docker będzie dostępny.
-5. Uzupełnić `OWNER` w `docker-compose.yml` (nazwa użytkownika lub organizacji na GHCR).
+5. Obraz publikowany jest jako `ghcr.io/ilfirinpl/feedly-filter` (`docker-compose.yml` już go używa).
 6. Pierwszy release `v0.1.0`.
 
 ## 12. Założenia do potwierdzenia

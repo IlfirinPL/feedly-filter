@@ -26,6 +26,8 @@ class Scheduler:
 
     def tick(self) -> None:
         self.engine.store.reload()
+        if not self.engine.store.config.is_active_hour(self.engine.clock()):
+            return  # outside the working hours: scheduled runs wait; manual runs still work
         self.engine.refresh_catalog()
         due = self.engine.due_feed_ids()
         if due:

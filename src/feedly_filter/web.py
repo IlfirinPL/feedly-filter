@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import FastAPI, Request
@@ -88,7 +89,7 @@ def scope_view(config: Config, catalog: dict[str, FeedInfo], scope: str) -> dict
         "eff_rules": eff.rules, "eff_whitelist": eff.whitelist, "eff_aging": eff.aging_days,
         "own_aging": feed.aging_days if feed else None,
         "override": feed.override if feed else False,
-        "interval": feed.interval_minutes if feed else 60,
+        "interval": config.interval_for(key),
     }
 
 
@@ -141,7 +142,11 @@ def apply_scope_action(config: Config, catalog: dict[str, FeedInfo], scope: str,
     if action == "set_interval":
         if kind != "feed":
             raise ValueError("interval is set per feed")
-        minutes = int(form.get("minutes", "60"))
+        text = form.get("minutes", "").strip()
+        if not text:
+            owner.interval_minutes = None  # empty means: use the default interval
+            return "Interval reset to the default"
+        minutes = int(text)
         if minutes < 5:
             raise ValueError("interval must be at least 5 minutes")
         owner.interval_minutes = minutes
@@ -238,7 +243,8 @@ def create_app(services: Services) -> FastAPI:
         error = refresh_catalog_message()
         return page(request, "index.html", error=error, title="Dashboard",
                     runs=history.recent_runs(15), session_status=session.status(),
-                    feed_count=len(engine.catalog), running=engine.is_running())
+                    feed_count=len(engine.catalog), running=engine.is_running(),
+                    scheduler_active=store.config.is_active_hour(engine.clock()))
 
     @app.post("/run")
     async def run_now(request: Request):
@@ -270,7 +276,7 @@ def create_app(services: Services) -> FastAPI:
             feed = store.config.find_feed(info.id)
             rows.append({
                 "info": info,
-                "interval": feed.interval_minutes if feed else 60,
+                "interval": store.config.interval_for(info.id),
                 "rule_source": rule_source_label(store.config, info.id, info.folder),
                 "own_rules": len(feed.rules) if feed else 0,
             })
@@ -354,17 +360,29 @@ def create_app(services: Services) -> FastAPI:
         try:
             days = int(str(form.get("days", "7")))
             limit = int(str(form.get("history_limit_mb", "100")))
+            default_interval = int(str(form.get("default_interval_minutes", "60")))
+            active_from = int(str(form.get("active_from", "7")))
+            active_until = int(str(form.get("active_until", "22")))
+            timezone = str(form.get("timezone", "Europe/Warsaw")).strip()
             if days < 0 or limit < 1:
                 raise ValueError("days must be 0 or more, history limit at least 1 MB")
-        except ValueError as error:
-            return back("/settings", str(error), is_error=True)
+            if default_interval < 5:
+                raise ValueError("default interval must be at least 5 minutes")
+            if not 0 <= active_from < active_until <= 24:
+                raise ValueError("working hours: start must be before end, between 0 and 24")
+            ZoneInfo(timezone)
+        except (ValueError, KeyError) as error:
+            return back("/settings", f"Not saved: {error}", is_error=True)
 
         def change(config: Config) -> None:
             config.dry_run = form.get("dry_run") == "on"
             config.aging.enabled = form.get("aging_enabled") == "on"
             config.aging.days = days
             config.history_limit_mb = limit
-            config.timezone = str(form.get("timezone", config.timezone)).strip() or config.timezone
+            config.default_interval_minutes = default_interval
+            config.active_from = active_from
+            config.active_until = active_until
+            config.timezone = timezone
 
         store.update(change)
         return back("/settings", "Settings saved")

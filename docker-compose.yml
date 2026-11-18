@@ -1,8 +1,7 @@
 services:
   feedly-filter:
     # Pulls the published image; `docker compose up --build` builds it locally instead.
-    # Replace OWNER with the GitHub user or organisation that publishes the image.
-    image: ${FEEDLY_FILTER_IMAGE:-ghcr.io/OWNER/feedly-filter:latest}
+    image: ${FEEDLY_FILTER_IMAGE:-ghcr.io/ilfirinpl/feedly-filter:latest}
     build: .
     ports:
       - "8080:8080"          # GUI, trusted network only (no authentication)

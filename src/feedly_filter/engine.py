@@ -127,8 +127,7 @@ class Engine:
         last_runs = self.history.last_runs()
         due = []
         for feed_id in self.catalog:
-            feed = config.find_feed(feed_id)
-            interval = timedelta(minutes=feed.interval_minutes if feed else 60)
+            interval = timedelta(minutes=config.interval_for(feed_id))
             previous = last_runs.get(feed_id)
             if previous is None or now - previous >= interval:
                 due.append(feed_id)

@@ -79,6 +79,12 @@ Treat the token like a password: it gives full access to the account.
 - The dashboard has a **Dry run: ON/OFF** switch. Turning dry-run OFF asks for confirmation, because scheduled runs will then mark entries as read.
 - **Run now** follows the dry-run setting. **Force run** applies the marks immediately, even with dry-run on.
 
+## Schedule
+
+Feeds are checked on their own interval (default 60 minutes, set in **Settings**; a feed can have its own, and an empty
+field means the default). Scheduled checks run only between **7:00 and 22:00** local time by default (the end hour is
+not included); change this in Settings. Manual runs from the GUI are not limited by the hours.
+
 ## Stats
 
 The **Stats** page counts every request sent to Feedly, split by type (profile check, subscriptions, unread counts,

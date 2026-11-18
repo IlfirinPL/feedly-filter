@@ -4,6 +4,9 @@ version: 1
 timezone: Europe/Warsaw
 dry_run: true              # true: runs only report what would be marked
 history_limit_mb: 100
+active_from: 7             # scheduled runs only between these hours, local time (end not included)
+active_until: 22
+default_interval_minutes: 60   # used by feeds without their own interval
 aging:
   enabled: true
   days: 7                  # entries older than this (by publication date) are marked as read
@@ -23,7 +26,7 @@ feeds:
   - id: "feed/https://example.com/rss"
     name: Example
     folder: Tech
-    interval_minutes: 60
+    interval_minutes: null # null: use default_interval_minutes
     aging_days: null
     override: false        # false: use the folder rules; true: use only this feed's rules
     rules: []
