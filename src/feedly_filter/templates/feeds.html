@@ -1,8 +1,24 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Feeds</h1>
+<h1>Feeds and folders</h1>
+<h2>Folders</h2>
+<table class="sortable">
+  <tr>
+    <th>Folder</th><th>Feeds</th><th>Unread</th>
+  </tr>
+  {% for folder in folders %}
+  <tr>
+    <td><a href="/folder?name={{ folder.name | urlencode }}">{{ folder.name }}</a></td>
+    <td>{{ folder.feeds }}</td>
+    <td>{{ folder.unread }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="3" class="muted">No folders yet</td></tr>
+  {% endfor %}
+</table>
+<h2>Feeds</h2>
 <form method="post" action="/feeds/interval">
-<table>
+<table class="sortable">
   <tr>
     <th></th><th>Feed</th><th>Folder</th><th>Unread</th><th>Velocity</th><th>Interval (min)</th><th>Rules from</th><th>Own rules</th><th></th>
   </tr>

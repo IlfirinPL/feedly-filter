@@ -22,13 +22,19 @@ button.switch { border-radius: 999px; padding: .3rem 1rem; border: 0; color: #ff
 button.switch.on { background: #8a6d00; }
 button.switch.off { background: #2b6e3f; }
 code { word-break: break-all; }
+table.sortable th.sort-header { cursor: pointer; user-select: none; }
+table.sortable th[data-dir="asc"]::after { content: " ▲"; }
+table.sortable th[data-dir="desc"]::after { content: " ▼"; }
+table.sortable tr.filter-row td { padding: .2rem .5rem; }
+table.sortable tr.filter-row input, table.sortable tr.filter-row select { width: 100%; box-sizing: border-box; font-size: .85rem; }
+table.sortable tr.filter-row input.invalid { background: #fdecea; }
 </style>
 </head>
 <body>
 <nav>
   <a href="/">Dashboard</a>
   <a href="/feeds">Feeds</a>
-  <a href="/folders">Folders</a>
+  <a href="/inspect">Inspect</a>
   <a href="/rules">Global rules</a>
   <a href="/settings">Settings</a>
   <a href="/history">History</a>
@@ -40,5 +46,126 @@ code { word-break: break-all; }
 {% if error %}<div class="err">{{ error }}</div>{% endif %}
 {% block content %}{% endblock %}
 </main>
+<script>
+// table.sortable: click a header to sort by that column (again to reverse), type in the row under the header to filter.
+// Number columns compare instead of matching text: >0, <10, >=1, <=5, =3; a plain number means =.
+var NUMBER = /^-?\d+(\.\d+)?$/;
+var COMPARISON = /^(>=|<=|>|<|=)?(-?\d+(\.\d+)?)$/;
+var OPERATORS = {
+  "=": function (a, b) { return a === b; },
+  ">": function (a, b) { return a > b; },
+  "<": function (a, b) { return a < b; },
+  ">=": function (a, b) { return a >= b; },
+  "<=": function (a, b) { return a <= b; }
+};
+document.querySelectorAll("table.sortable").forEach(function (table) {
+  var header = table.rows[0];
+  var sortState = {column: -1, dir: 1};
+  var filters = document.createElement("tr");
+  filters.className = "filter-row";
+  var numeric = Array.from(header.cells).map(function (th, column) {
+    var texts = dataRows().map(function (row) { return cellText(row, column); }).filter(Boolean);
+    return texts.length > 0 && texts.every(function (text) { return NUMBER.test(text); });
+  });
+  Array.from(header.cells).forEach(function (th, column) {
+    var cell = document.createElement("td");
+    if (th.textContent.trim() && th.dataset.filter === "select") {
+      // drop-down with the distinct values of this column (e.g. the decision values)
+      var choices = document.createElement("select");
+      choices.setAttribute("aria-label", "Filter " + th.textContent.trim());
+      choices.add(new Option("all", ""));
+      var values = Array.from(new Set(dataRows().map(function (row) { return cellText(row, column); }).filter(Boolean)));
+      values.sort(function (a, b) { return a.localeCompare(b, undefined, {numeric: true, sensitivity: "base"}); });
+      values.forEach(function (value) { choices.add(new Option(value, value)); });
+      choices.addEventListener("change", applyFilters);
+      cell.appendChild(choices);
+    } else if (th.textContent.trim()) {
+      var input = document.createElement("input");
+      input.type = "search";
+      input.placeholder = numeric[column] ? "e.g. >0" : "filter";
+      input.title = numeric[column] ? "A number, or a comparison: >0, <10, >=1, <=5, =3" : "";
+      input.setAttribute("aria-label", "Filter " + th.textContent.trim());
+      input.addEventListener("input", applyFilters);
+      // Enter would submit the form around the table (Feeds page), so it does nothing here
+      input.addEventListener("keydown", function (event) { if (event.key === "Enter") event.preventDefault(); });
+      cell.appendChild(input);
+    }
+    filters.appendChild(cell);
+  });
+  header.parentNode.insertBefore(filters, header.nextSibling);
+
+  // rows with a colspan cell are placeholders ("No runs yet"), they always stay last
+  function isPlaceholder(row) { return row.querySelector("[colspan]") !== null; }
+  function dataRows() {
+    return Array.from(table.rows).filter(function (row) {
+      return row !== header && row !== filters && !isPlaceholder(row);
+    });
+  }
+  function cellText(row, column) { return row.cells[column] ? row.cells[column].textContent.trim() : ""; }
+
+  // returns the test for one cell text, or null when there is no usable filter (empty or incomplete term)
+  function predicateFor(column, term) {
+    if (!term) return null;
+    if (!numeric[column]) {
+      var needle = term.toLowerCase();
+      return function (text) { return text.toLowerCase().includes(needle); };
+    }
+    var parsed = COMPARISON.exec(term.replace(/\s+/g, ""));
+    if (!parsed) return null;
+    var compare = OPERATORS[parsed[1] || "="];
+    var value = Number(parsed[2]);
+    return function (text) { return NUMBER.test(text) && compare(Number(text), value); };
+  }
+
+  function applyFilters() {
+    var tests = Array.from(filters.cells).map(function (cell, column) {
+      var choices = cell.querySelector("select");
+      if (choices) return choices.value ? function (text) { return text === choices.value; } : null;
+      var input = cell.querySelector("input");
+      var term = input ? input.value.trim() : "";
+      var test = predicateFor(column, term);
+      if (input) input.classList.toggle("invalid", Boolean(term) && !test);
+      return test;
+    });
+    var filtering = tests.some(Boolean);
+    dataRows().forEach(function (row) {
+      row.hidden = tests.some(function (test, column) { return test && !test(cellText(row, column)); });
+    });
+    // a placeholder ("No runs yet") would be misleading while a filter is active
+    Array.from(table.rows).filter(isPlaceholder).forEach(function (row) { row.hidden = filtering; });
+    // keep the typed filters across page loads (the "details" links reload the page)
+    sessionStorage.setItem(storageKey, JSON.stringify(Array.from(filters.cells).map(function (cell) {
+      var field = cell.querySelector("input, select");
+      return field ? field.value : "";
+    })));
+  }
+
+  // the key is the page path plus the column titles, so each table on each page has its own filters
+  var storageKey = "table-filters:" + location.pathname + ":" + Array.from(header.cells).map(function (th) {
+    return th.textContent.trim();
+  }).join("|");
+  var saved = JSON.parse(sessionStorage.getItem(storageKey)) || [];
+  Array.from(filters.cells).forEach(function (cell, column) {
+    var field = cell.querySelector("input, select");
+    if (field && saved[column]) field.value = saved[column];
+  });
+  applyFilters();
+
+  Array.from(header.cells).forEach(function (th, column) {
+    if (!th.textContent.trim()) return;
+    th.classList.add("sort-header");
+    th.addEventListener("click", function () {
+      var dir = sortState.column === column ? -sortState.dir : 1;
+      sortState = {column: column, dir: dir};
+      Array.from(header.cells).forEach(function (cell) { delete cell.dataset.dir; });
+      th.dataset.dir = dir > 0 ? "asc" : "desc";
+      var rows = dataRows().sort(function (a, b) {
+        return dir * cellText(a, column).localeCompare(cellText(b, column), undefined, {numeric: true, sensitivity: "base"});
+      });
+      rows.concat(Array.from(table.rows).filter(isPlaceholder)).forEach(function (row) { header.parentNode.appendChild(row); });
+    });
+  });
+});
+</script>
 </body>
 </html>

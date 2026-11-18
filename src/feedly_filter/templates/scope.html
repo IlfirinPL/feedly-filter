@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% macro rule_rows(scope, list_name, rules) %}
-<table>
+<table class="sortable">
   <tr><th>#</th><th>Field</th><th>Operator</th><th>Value</th><th>Comment</th><th>Enabled</th><th></th></tr>
   {% for rule in rules %}
   <tr>
@@ -62,7 +62,7 @@
   Not saved yet.
 </div>
 {% if preview.samples %}
-<table>
+<table class="sortable">
   <tr><th>Feed</th><th>Entry</th></tr>
   {% for feed_title, entry_title in preview.samples %}
   <tr><td>{{ feed_title }}</td><td>{{ entry_title }}</td></tr>
@@ -105,7 +105,7 @@
 {{ add_form(scope, "add_whitelist", "Add exception") }}
 
 <h2>Effective rules</h2>
-<table>
+<table class="sortable">
   <tr><th>Source</th><th>Field</th><th>Operator</th><th>Value</th><th>Enabled</th></tr>
   {% for rule, source in eff_rules %}
   <tr><td>{{ source }}</td><td>{{ rule.field }}</td><td>{{ rule.op }}</td><td><code>{{ rule.value }}</code></td><td>{{ "yes" if rule.enabled else "no" }}</td></tr>
@@ -114,7 +114,7 @@
   {% endfor %}
 </table>
 <h2>Effective whitelist</h2>
-<table>
+<table class="sortable">
   <tr><th>Source</th><th>Field</th><th>Operator</th><th>Value</th><th>Enabled</th></tr>
   {% for rule, source in eff_whitelist %}
   <tr><td>{{ source }}</td><td>{{ rule.field }}</td><td>{{ rule.op }}</td><td><code>{{ rule.value }}</code></td><td>{{ "yes" if rule.enabled else "no" }}</td></tr>

@@ -9,13 +9,13 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.responses import Response
 
 from .client import FeedlyError
-from .config import Config, ConfigStore, Rule
+from .config import Config, ConfigStore, FeedSettings, FolderSettings, Rule
 from .engine import Engine, FeedInfo
 from .history import History, file_size_mb
 from .rules import effective
@@ -47,6 +47,24 @@ def scope_url(scope: str) -> str:
     if kind == "folder":
         return f"/folder?name={quote(key)}"
     return f"/feed?id={quote(key, safe='')}"
+
+
+def inspect_url(source: str, page_no: int = 1) -> str:
+    query = []
+    if source:
+        query.append(f"source={quote(source, safe='')}")
+    if page_no > 1:
+        query.append(f"page={page_no}")
+    return "/inspect" + (f"?{'&'.join(query)}" if query else "")
+
+
+def inspect_heading(source: str, catalog: dict[str, FeedInfo]) -> str:
+    kind, _, key = source.partition("|")
+    if kind == "folder":
+        return f"Folder: {key}"
+    if kind == "feed" and key in catalog:
+        return catalog[key].title
+    return ""
 
 
 def rule_source_label(config: Config, feed_id: str, folder_name: str) -> str:
@@ -93,6 +111,19 @@ def scope_view(config: Config, catalog: dict[str, FeedInfo], scope: str) -> dict
     }
 
 
+def same_rule(first: Rule, second: Rule) -> bool:
+    """Same field, operator and value; case is ignored like in matching, the comment does not count."""
+    return (first.field, first.op, first.value.casefold()) == (second.field, second.op, second.value.casefold())
+
+
+def adopt_folder_rules(feed: FeedSettings, folder: FolderSettings | None) -> None:
+    """Copy the folder's rules into a feed that gets its own rules, so they keep applying to it."""
+    if folder is not None:
+        feed.rules = [rule.model_copy() for rule in folder.rules]
+        feed.whitelist = [rule.model_copy() for rule in folder.whitelist]
+    feed.override = True
+
+
 def apply_scope_action(config: Config, catalog: dict[str, FeedInfo], scope: str, form: dict[str, str]) -> str:
     kind, _, key = scope.partition("|")
     info = catalog.get(key) if kind == "feed" else None
@@ -116,9 +147,24 @@ def apply_scope_action(config: Config, catalog: dict[str, FeedInfo], scope: str,
             value=form.get("value", ""),
             comment=form.get("comment", ""),
         )
-        (rules_list if action == "add_rule" else whitelist).append(rule)
-        if kind == "feed":
-            owner.override = True  # own rules replace the folder rules from now on
+        is_rule = action == "add_rule"
+        folder = config.find_folder(info.folder) if info else None
+        inherits = kind == "feed" and not owner.override
+        if kind == "global":
+            current = config.global_rules if is_rule else config.global_whitelist
+        elif inherits:
+            current = (folder.rules if is_rule else folder.whitelist) if folder else []
+        else:
+            current = owner.rules if is_rule else owner.whitelist
+        if any(same_rule(existing, rule) for existing in current):
+            return "Rule already exists, not added"
+        if inherits:
+            adopt_folder_rules(owner, folder)  # the folder rules keep applying to this feed
+        if kind == "global":
+            target = config.global_rules if is_rule else config.global_whitelist
+        else:
+            target = owner.rules if is_rule else owner.whitelist
+        target.append(rule)
         return "Rule added"
     if action in ("delete", "toggle"):
         target = rules_list if form.get("list") == "rules" else whitelist
@@ -169,6 +215,7 @@ KIND_LABELS = {
     "other": "Other",
 }
 OUTCOMES = ("2xx", "4xx", "5xx / 429", "network error", "other")
+INSPECT_PAGE_SIZE = 20  # entries per page on the Inspect page
 CHART_W, CHART_H = 720, 220
 PAD_L, PAD_T, PAD_R, PAD_B = 44, 12, 8, 28
 
@@ -280,7 +327,14 @@ def create_app(services: Services) -> FastAPI:
                 "rule_source": rule_source_label(store.config, info.id, info.folder),
                 "own_rules": len(feed.rules) if feed else 0,
             })
-        return page(request, "feeds.html", error=error, title="Feeds", rows=rows)
+        folders = {folder.name: {"name": folder.name, "feeds": 0, "unread": 0} for folder in store.config.folders}
+        for info in engine.catalog.values():
+            if info.folder:
+                summary = folders.setdefault(info.folder, {"name": info.folder, "feeds": 0, "unread": 0})
+                summary["feeds"] += 1
+                summary["unread"] += info.unread
+        return page(request, "feeds.html", error=error, title="Feeds", rows=rows,
+                    folders=sorted(folders.values(), key=lambda item: item["name"].casefold()))
 
     @app.post("/feeds/interval")
     async def feeds_interval(request: Request):
@@ -310,11 +364,8 @@ def create_app(services: Services) -> FastAPI:
                     **scope_view(store.config, engine.catalog, f"feed|{id}"))
 
     @app.get("/folders")
-    def folders(request: Request):
-        error = refresh_catalog_message()
-        names = {info.folder for info in engine.catalog.values() if info.folder}
-        names |= {folder.name for folder in store.config.folders}
-        return page(request, "folders.html", error=error, title="Folders", names=sorted(names, key=str.casefold))
+    def folders():
+        return RedirectResponse("/feeds")  # folders are listed on the Feeds page now
 
     @app.get("/folder")
     def folder_detail(request: Request, name: str):
@@ -330,6 +381,7 @@ def create_app(services: Services) -> FastAPI:
     async def scope_action(request: Request):
         form = {key: str(value) for key, value in (await request.form()).items()}
         scope = form.get("scope", "global")
+        refresh_catalog_message()  # the feed's folder is needed to keep inherited rules
         try:
             message = store.update(lambda config: apply_scope_action(config, engine.catalog, scope, form))
         except (ValueError, IndexError) as error:
@@ -349,6 +401,43 @@ def create_app(services: Services) -> FastAPI:
             return back(scope_url(scope), f"Preview failed: {error}", is_error=True)
         return page(request, "scope.html", title="Preview", preview=preview, rule=rule,
                     **scope_view(store.config, engine.catalog, scope))
+
+    @app.get("/inspect")
+    def inspect_page(request: Request, source: str = "", page_no: int = Query(1, alias="page", ge=1)):
+        error = refresh_catalog_message()
+        found: list = []
+        if source and not error:
+            try:
+                found = engine.inspect_entries(source)
+            except (FeedlyError, ValueError) as exc:
+                error = f"Could not read {source.partition('|')[0]}: {exc}"
+        pages = max(-(-len(found) // INSPECT_PAGE_SIZE), 1)
+        page_no = min(page_no, pages)
+        start = (page_no - 1) * INSPECT_PAGE_SIZE
+        entries = found[start:start + INSPECT_PAGE_SIZE]
+        folders = sorted({info.folder for info in engine.catalog.values() if info.folder}, key=str.casefold)
+        feeds = sorted(engine.catalog.values(), key=lambda item: item.title.casefold())
+        sources = [(f"folder|{name}", f"Folder: {name}") for name in folders]
+        sources += [(f"feed|{info.id}", info.title) for info in feeds]
+        return page(request, "inspect.html", error=error, title="Inspect", sources=sources,
+                    selected=source, heading=inspect_heading(source, engine.catalog),
+                    entries=entries, total=len(found),
+                    first=start + 1 if entries else 0, last=start + len(entries),
+                    page_no=page_no, pages=pages,
+                    prev_url=inspect_url(source, page_no - 1) if page_no > 1 else "",
+                    next_url=inspect_url(source, page_no + 1) if page_no < pages else "")
+
+    @app.post("/inspect/rule")
+    async def inspect_rule(request: Request):
+        form = {key: str(value) for key, value in (await request.form()).items()}
+        source = form.get("source", "")
+        page_no = int(form["page"]) if form.get("page", "").isdigit() else 1
+        refresh_catalog_message()  # the feed's folder is needed to keep inherited rules
+        try:
+            message = store.update(lambda config: apply_scope_action(config, engine.catalog, form.get("scope", ""), form))
+        except (ValueError, IndexError) as error:
+            return back(inspect_url(source, page_no), str(error), is_error=True)
+        return back(inspect_url(source, page_no), message)
 
     @app.get("/settings")
     def settings(request: Request):

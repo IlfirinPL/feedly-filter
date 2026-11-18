@@ -42,7 +42,7 @@
 </div>
 <details>
   <summary>Show as table</summary>
-  <table>
+  <table class="sortable">
     <tr><th>Day</th><th class="num">Requests</th></tr>
     {% for day, count in series %}
     <tr><td>{{ day }}</td><td class="num">{{ count }}</td></tr>
@@ -51,7 +51,7 @@
 </details>
 
 <h2>By type and outcome</h2>
-<table>
+<table class="sortable">
   <tr>
     <th>Type</th>
     {% for name in outcomes %}<th class="num">{{ name }}</th>{% endfor %}

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import html
 import logging
+import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -63,11 +65,31 @@ class PreviewResult:
     samples: list[tuple[str, str]]  # (feed title, entry title)
 
 
+@dataclass(frozen=True)
+class InspectedEntry:
+    id: str
+    feed_id: str
+    feed_title: str
+    folder: str
+    title: str
+    author: str
+    url: str
+    content: str  # plain text of the summary, for display only; rules match the raw HTML
+    published: str  # ISO time, empty when the entry has no publication date
+    mark: bool
+    reason: str
+
+
 def folder_of(subscription: dict) -> str:
     categories = subscription.get("categories") or []
     if categories and isinstance(categories[0], dict):
         return categories[0].get("label", "")
     return ""
+
+
+def plain_text(markup: str) -> str:
+    """Feed summaries are HTML; the Inspect page shows them as readable text."""
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", markup)).split())
 
 
 class Engine:
@@ -195,6 +217,48 @@ class Engine:
                         if len(samples) < sample_size:
                             samples.append((info.title, fields["title"]))
         return PreviewResult(feeds_scanned=len(feed_ids), matches=total, samples=samples)
+
+    def inspect_entries(self, source: str) -> list[InspectedEntry]:
+        """Unread entries of one feed or of all feeds in a folder, newest first, with the decision a run would make now.
+
+        Nothing is changed. Each feed is judged with its own settings, so a feed that overrides its folder uses its own rules.
+        """
+        self.refresh_catalog()
+        kind, _, key = source.partition("|")
+        if kind == "feed":
+            if key not in self.catalog:
+                raise ValueError("unknown feed")
+            feed_ids = [key]
+        elif kind == "folder":
+            feed_ids = [feed_id for feed_id, info in self.catalog.items() if info.folder == key]
+        else:
+            raise ValueError(f"unknown source {source!r}")
+        config = self.store.config
+        now = self.clock()
+        entries = []
+        with self._client() as client:
+            for feed_id in feed_ids:
+                info = self.catalog[feed_id]
+                eff = effective(config, config.find_feed(feed_id), info.folder)
+                for item in client.stream_entries(feed_id):
+                    decision = decide(item, eff, now)
+                    fields = entry_fields(item)
+                    published = published_at(item)
+                    entries.append(InspectedEntry(
+                        id=item.get("id", ""),
+                        feed_id=feed_id,
+                        feed_title=info.title,
+                        folder=info.folder,
+                        title=fields["title"],
+                        author=fields["author"],
+                        url=fields["url"],
+                        content=plain_text(fields["content"]),
+                        published=published.isoformat() if published else "",
+                        mark=decision.mark,
+                        reason=decision.reason,
+                    ))
+        entries.sort(key=lambda entry: entry.published, reverse=True)  # ISO times in UTC sort as text
+        return entries
 
     def _run(self, feed_ids: list[str] | None, dry_run: bool | None) -> list[FeedResult]:
         self.store.reload()

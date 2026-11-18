@@ -69,11 +69,29 @@ Treat the token like a password: it gives full access to the account.
 - A rule has a **field** (`title`, `content`, `author`, `url`), an **operator** (`contains`, `starts with`, `equals`,
   `regex`) and a **value**. Matching ignores letter case.
 - Rules can be global (all feeds), per folder or per feed. A feed that overrides its folder uses only its own rules.
+  Adding the first rule to a feed copies the folder's rules into it, so nothing that applied before stops applying.
   Global rules always apply.
+- Folders are listed at the top of the **Feeds** page; click a folder to edit its rules, aging and whitelist.
 - **Whitelist** entries are never marked, even when a rule matches.
 - **Aging** marks entries older than N days by publication date. Set it globally, per folder or per feed; `0` turns it off.
 - Entries saved for later are never marked.
 - **Preview matches** shows how many unread entries a rule would mark right now, before you save it.
+
+## Inspect
+
+The **Inspect** page lists the unread entries of one feed or of a whole folder (choose either in the drop-down),
+newest first, 20 per page (use *Previous* and *Next* to move between pages). For a folder, the entries of all its feeds
+are merged; each feed is judged with its own rules. Columns: feed, title, author, URL, content, published date, decision
+and reason. These are the four fields
+rules can match (title, content, author, URL). Content is shown as plain text, cut to 200 characters; click it to see
+up to 2000 characters. Rules match the original HTML of the summary. Each entry shows the
+decision a run would make now and the reason: the rule that matched, aging, an exception, *saved for later*, or no match.
+Nothing is changed by looking. Open **Rule** on an entry to block it (add a rule) or keep it (add an exception), at the
+level of this feed, its folder or all feeds. The level is preselected from the feed or folder you chose at the top of the
+page. The value is pre-filled with the entry title; shorten it if you want a
+broader rule. The first rule added to a feed copies its folder's rules into the feed, so they keep applying; later
+changes to the folder no longer reach that feed. Adding a rule that already exists (same field, operator and value,
+ignoring case) is not repeated; you get a message instead.
 
 ## Dry-run and forced runs
 
@@ -92,6 +110,17 @@ not included); change this in Settings. Manual runs from the GUI are not limited
 The **Stats** page counts every request sent to Feedly, split by type (profile check, subscriptions, unread counts,
 feed entries, mark as read) and by outcome (2xx, 4xx, 5xx/429, network error). It shows a bar chart of requests per
 day for the last 7, 14, 30 or 90 days, with a table view. Counts are stored in `history.db`.
+
+## Sorting and filtering tables
+
+Click a column header in any table (feeds, folders, rules, history, dashboard, stats) to sort by that column.
+Click the same header again to reverse the order. Under the headers, type in a column's box to show only rows
+that contain the text (case-insensitive). In number columns (such as *Processed* or *Interval*) the box takes a
+comparison instead: `>0`, `<10`, `>=1`, `<=5`, `=3`; a plain number means exactly that value. A box with an
+unfinished or invalid comparison turns red and filters nothing. Columns with a small set of values (the Inspect page's
+*Decision* and *Reason*) get a drop-down instead, listing the values that appear in that column. Sorting and filtering
+happen in the browser. Filters
+stay set while the browser tab is open, also after opening a run's details and coming back; they are not saved on the server.
 
 ## Security
 

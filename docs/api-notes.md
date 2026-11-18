@@ -30,6 +30,7 @@ Na koncie w chwili testu: 2 subskrypcje, 2 kategorie, 6 wpisów w liczbach niepr
 - W próbce nie ma pola `author` ani `tags`. Aplikacja czyta `author` jako pusty tekst, dopóki nie potwierdzimy innego źródła.
 - Identyfikatory: kanał `feed/<url>`, kategoria `user/<uuid>/category/<id>`. Kanał zwracany przez `/subscriptions` ma `categories` z `label`, którego aplikacja używa jako nazwy folderu.
 - Zapisane na później: aplikacja zakłada tag `…/tag/global.saved` w `categories`. To nie zostało sprawdzone na zapisanym wpisie.
+- Zakładka Inspect czyta ten sam strumień (`unreadOnly=true`, do 1000 wpisów na kanał) i nie wywołuje nowych endpointów. Dla folderu czyta strumień każdego jego kanału. Ocena wpisu jest tą samą, co w przebiegu.
 
 ## Do sprawdzenia (kolejne kroki)
 

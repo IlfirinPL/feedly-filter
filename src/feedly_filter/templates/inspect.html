@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Inspect</h1>
+<form method="get" action="/inspect">
+  <select name="source" onchange="this.form.submit()">
+    <option value="">Choose a feed or folder</option>
+    {% for value, label in sources %}
+    <option value="{{ value }}" {% if value == selected %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <noscript><button>Show</button></noscript>
+</form>
+
+{% if selected %}
+<h2>{{ heading }}</h2>
+<p class="muted">
+  Unread entries, newest first, with the decision a run would make now. Nothing changes until you add a rule.
+  A rule added to a single feed makes that feed's own rules replace the folder rules.
+</p>
+{% if total %}
+<p class="muted">
+  {{ first }}-{{ last }} of {{ total }} unread entries · page {{ page_no }} of {{ pages }}
+  {% if prev_url %}<a href="{{ prev_url }}">Previous</a>{% endif %}
+  {% if next_url %}<a href="{{ next_url }}">Next</a>{% endif %}
+</p>
+{% endif %}
+<table class="sortable">
+  <tr><th>Feed</th><th>Title</th><th>Author</th><th>URL</th><th>Content</th><th>Published</th><th data-filter="select">Decision</th><th data-filter="select">Reason</th><th>Add rule</th></tr>
+  {% for entry in entries %}
+  <tr>
+    <td>{{ entry.feed_title }}</td>
+    <td>{% if entry.url.startswith("http") %}<a href="{{ entry.url }}" target="_blank" rel="noopener">{{ entry.title }}</a>{% else %}{{ entry.title }}{% endif %}</td>
+    <td>{{ entry.author }}</td>
+    <td>{% if entry.url.startswith("http") %}<a href="{{ entry.url }}" target="_blank" rel="noopener">{{ entry.url[:40] }}{% if entry.url|length > 40 %}…{% endif %}</a>{% else %}{{ entry.url[:40] }}{% endif %}</td>
+    <td style="max-width: 28rem">
+      {% if entry.content|length > 200 %}
+      <details><summary>{{ entry.content[:200] }}…</summary>{{ entry.content[:2000] }}{% if entry.content|length > 2000 %}…{% endif %}</details>
+      {% else %}{{ entry.content }}{% endif %}
+    </td>
+    <td>{{ entry.published[:16] }}</td>
+    <td>{% if entry.mark %}<span class="dry">will mark</span>{% else %}keep{% endif %}</td>
+    <td>{{ entry.reason }}</td>
+    <td>
+      <details>
+        <summary>Rule</summary>
+        <form method="post" action="/inspect/rule">
+          <input type="hidden" name="source" value="{{ selected }}">
+          <input type="hidden" name="page" value="{{ page_no }}">
+          <select name="scope">
+            {% set this_feed = "feed|" ~ entry.feed_id %}
+            {% set default_scope = selected if selected.startswith("folder|") else this_feed %}
+            <option value="{{ this_feed }}" {% if this_feed == default_scope %}selected{% endif %}>this feed</option>
+            {% if entry.folder %}<option value="folder|{{ entry.folder }}" {% if "folder|" ~ entry.folder == default_scope %}selected{% endif %}>folder: {{ entry.folder }}</option>{% endif %}
+            <option value="global">all feeds (global)</option>
+          </select>
+          <select name="field">
+            <option value="title">title</option>
+            <option value="content">content</option>
+            <option value="author">author</option>
+            <option value="url">url</option>
+          </select>
+          <select name="op">
+            <option value="contains">contains</option>
+            <option value="starts_with">starts with</option>
+            <option value="equals">equals</option>
+            <option value="regex">regex</option>
+          </select>
+          <input name="value" required size="30" value="{{ entry.title }}" aria-label="value">
+          <input name="comment" size="12" placeholder="comment">
+          <button name="action" value="add_rule">Block</button>
+          <button name="action" value="add_whitelist">Keep (exception)</button>
+        </form>
+      </details>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="9" class="muted">No unread entries</td></tr>
+  {% endfor %}
+</table>
+{% if total %}
+<p class="muted">
+  {% if prev_url %}<a href="{{ prev_url }}">Previous</a>{% endif %}
+  {% if next_url %}<a href="{{ next_url }}">Next</a>{% endif %}
+</p>
+{% endif %}
+{% endif %}
+{% endblock %}

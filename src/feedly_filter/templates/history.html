@@ -13,7 +13,7 @@
 </form>
 
 <h2>Runs</h2>
-<table>
+<table class="sortable">
   <tr><th>#</th><th>Feed</th><th>Started</th><th>Dry run</th><th>Processed</th><th>Marked</th><th>Error</th></tr>
   {% for run in runs %}
   <tr><td>{{ run[0] }}</td><td>{{ run[1] }}</td><td>{{ run[2][:19] }}</td><td>{{ "yes" if run[4] else "no" }}</td><td>{{ run[5] }}</td>
@@ -28,7 +28,7 @@
   tr.by-aging td { background: #f1f1ef; }
 </style>
 <p class="muted">Grey rows were marked by aging (older than N days), not by a blacklist rule.</p>
-<table>
+<table class="sortable">
   <tr><th>Feed</th><th>Title</th><th>Published</th><th>Rule that matched</th><th>Action</th></tr>
   {% for feed_name, entry_id, title, published, reason, action in marks %}
   <tr class="{% if reason.startswith('aging') %}by-aging{% endif %}">

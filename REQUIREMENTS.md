@@ -1,6 +1,6 @@
 # feedly-filter — wymagania
 
-Status: **v0.4 — implementacja rdzenia i GUI (sekcja 13), dopisane podgląd reguł, wymuszony przebieg i szczegóły przebiegu**. Pozycje w sekcji „Założenia" wymagają jeszcze potwierdzenia.
+Status: **v0.4 — implementacja rdzenia i GUI (sekcja 13), dopisane podgląd reguł, wymuszony przebieg, szczegóły przebiegu i inspekcja wpisów kanału**. Pozycje w sekcji „Założenia" wymagają jeszcze potwierdzenia.
 
 ## 1. Cel
 
@@ -80,12 +80,16 @@ Konfiguracja jest przechowywana w katalogu `data/`. Narzędzie działa w Dockerz
 - FR-19: Reguły dodawane, edytowane, wyłączane i usuwane z GUI.
 - FR-20: Walidacja w GUI (poprawność regexa, pusta wartość, duplikaty).
 - FR-21: Test reguły: podgląd, które aktualnie pobrane wpisy kanału zostałyby dopasowane.
+- FR-21a: Zakładka **Inspect** pokazuje nieprzeczytane wpisy wybranego kanału albo folderu (dla folderu: wpisy wszystkich jego kanałów, najnowsze pierwsze; każdy kanał oceniany własnymi ustawieniami) po 20 na stronie, z nawigacją Poprzednia / Następna. Kolumny: kanał, tytuł, autor, URL, treść, data publikacji, decyzja i powód. Treść jest pokazywana jako zwykły tekst, skrócona do 200 znaków, z rozwinięciem do 2000 znaków. Decyzja jest tą, jaką podjąłby przebieg: oznaczony / zostawiony, z powodem (reguła, aging, wyjątek, zapisany na później, brak dopasowania). Podgląd niczego nie zmienia.
+- FR-21b: Przy każdym wpisie w Inspect można od razu dodać regułę (czarna lista) albo wyjątek (whitelist) w zakresie: ten kanał, folder albo globalnie. Pole wartości jest wstępnie wypełnione tytułem wpisu. Po zapisie wraca się do Inspect, na tę samą stronę, z komunikatem.
+- FR-21c: Dodanie pierwszej reguły do kanału kopiuje reguły i wyjątki folderu do kanału, żeby dalej działały (patrz FR-14c); Inspect informuje o tym w opisie strony.
 
 ### 3.4a Poziomy reguł i dziedziczenie
 
 - FR-14a: Reguły i wyjątki można definiować na trzech poziomach: **globalnym**, **folderu** (kategorii Feedly) i **kanału** (feedu).
 - FR-14b: Kanał należy do jednego folderu (założenie, patrz sekcja 12). Jeśli feed nie ma w ogóle zdefiniowanych reguł, używane są reguły jego folderu.
-- FR-14c: Jeśli kanał ma własne reguły, **zastępują** reguły folderu (bez łączenia). Pusta lista reguł na kanale oznacza „dziedzicz z folderu”, a nie „brak reguł”. Żeby wyłączyć filtrowanie na kanale mimo reguł folderu, potrzebna jest jawna opcja „Nie dziedzicz” z pustą listą.
+- FR-14c: Jeśli kanał ma własne reguły, **zastępują** reguły folderu (bez łączenia). Pierwsza reguła dodana do kanału kopiuje reguły i wyjątki folderu do kanału, więc dotychczasowe reguły folderu dalej działają; późniejsze zmiany w folderze nie trafiają wtedy do tego kanału. Pusta lista reguł na kanale oznacza „dziedzicz z folderu”, a nie „brak reguł”. Żeby wyłączyć filtrowanie na kanale mimo reguł folderu, potrzebna jest jawna opcja „Nie dziedzicz” z pustą listą.
+- FR-14h: Dodanie reguły lub wyjątku, który już istnieje w tej samej liście (to samo pole, operator i wartość, bez względu na wielkość liter; komentarz się nie liczy), nie tworzy duplikatu. GUI pokazuje komunikat.
 - FR-14d: Reguły globalne stosują się zawsze, niezależnie od folderu i kanału (dopisane do reguł wynikających z dziedziczenia).
 - FR-14e: Ta sama zasada dziedziczenia obowiązuje dla wyjątków (whitelist) i dla `aging_days`: kanał → folder → globalnie.
 - FR-14f: GUI pokazuje przy każdym kanale, skąd pochodzą aktywne reguły (globalne / folder „X” / własne), i pozwala edytować je na poziomie folderu lub kanału.
@@ -190,15 +194,16 @@ Prosty interfejs serwerowy (bez ciężkiego frontendu). Język domyślny: **angi
 Ekrany:
 
 1. **Dashboard** — status (połączenie/sesja Feedly, ostatni przebieg, najbliższe sprawdzenia), przełącznik „Dry run: ON/OFF” (z potwierdzeniem przy wyłączeniu), przyciski „Run now (follows dry-run setting)” i „Force run: apply marks now” (z potwierdzeniem), informacja, gdy przebieg trwa.
-2. **Feeds** — tabela: nazwa, folder, nieprzeczytane, średnio nowych wpisów/dobę, interwał, źródło reguł (własne / folder / globalne), nadpisany aging. Zbiorowa zmiana interwału. Kliknięcie → szczegóły kanału.
+2. **Feeds** — nad tabelą lista folderów (nazwa → szczegóły folderu, liczba kanałów, nieprzeczytane). Tabela kanałów: nazwa, folder, nieprzeczytane, średnio nowych wpisów/dobę, interwał, źródło reguł (własne / folder / globalne), nadpisany aging. Zbiorowa zmiana interwału. Kliknięcie → szczegóły kanału.
 3. **Feed detail** — reguły kanału (pole, operator, wartość, aktywna), tryb „dziedzicz z folderu” lub własne, wyjątki, interwał, aging. Przy dodawaniu reguły przycisk „Preview matches” pokazuje liczbę wpisów, które by oznaczyła (FR-30b).
-4. **Folders** — lista folderów (kategorii Feedly): reguły folderu, wyjątki, `aging_days`. Edycja reguł folderu dziedziczona przez kanały bez własnych reguł.
+4. **Folder detail** — szczegóły folderu (kategorii Feedly) z listy na stronie Feeds: reguły folderu, wyjątki, `aging_days`. Edycja reguł folderu dziedziczona przez kanały bez własnych reguł. Stary adres `/folders` przekierowuje na Feeds.
 5. **Global rules & whitelist** — reguły globalne i wyjątki globalne.
 6. **Aging** — globalne N dni, przełącznik.
 7. **Settings** — strefa czasowa, dry-run, limit historii (informacyjnie: 100 MB), domyślny interwał kanałów (60 min), godziny pracy schedulera (7–22).
 8. **History** — przebiegi i oznaczone wpisy (filtr po kanale i dacie), link z liczby oznaczonych do listy wpisów przebiegu z regułą, wykorzystanie miejsca w bazie.
 9. **Login assist** — pokazuje się tylko, gdy logowanie wymaga interwencji (FR-5a): zrzut ekranu, opis problemu, pole na kod 2FA lub cookies, przycisk „Retry”. Dashboard pokazuje link do tej strony, gdy jest aktywny. Strona „Login” przyjmuje token i cookies, sprawdza je jednym odczytem (`/profile`) i zapisuje tylko, gdy działają (FR-3e).
 10. **Stats** — liczba żądań do Feedly per typ i wynik, wykres dzienny i tabela (FR-33b, FR-33c).
+11. **Inspect** — wybór kanału albo folderu, lista ich nieprzeczytanych wpisów z decyzją i powodem oraz formularz reguły/wyjątku przy każdym wpisie (FR-21a–c).
 
 Wymagania GUI:
 
@@ -208,6 +213,7 @@ Wymagania GUI:
 - G-4: Responsywny układ (podstawowy).
 - G-5: Endpoint `/healthz` do healthchecka Dockera.
 - G-6: Strona „Login assist” (FR-5a–5c) działa bez przeładowania całej aplikacji (odświeżanie stanu co kilka sekund lub SSE); zrzut ekranu serwowany z `data/` i nie trafia do logów.
+- G-7: Tabele w GUI (dashboard, kanały, foldery, reguły, historia, statystyki) sortują się po kliknięciu nagłówka kolumny; ponowne kliknięcie odwraca kolejność. Pod nagłówkami jest wiersz filtrów (szukanie bez rozróżniania wielkości liter w danej kolumnie). W kolumnach liczbowych filtr przyjmuje porównania: `>0`, `<10`, `>=1`, `<=5`, `=3`; sama liczba oznacza dokładną wartość. Niepełne lub błędne porównanie jest podświetlane i nie filtruje. Kolumny o małym zbiorze wartości (np. decyzja i powód na stronie Inspect) mają zamiast pola tekstowego listę rozwijaną z wartościami tej kolumny. Sortowanie i filtrowanie działają w przeglądarce, bez dodatkowego zapytania do serwera. Filtry są zapamiętane w karcie przeglądarki (`sessionStorage`) i przetrwają przeładowanie strony, np. po wejściu w szczegóły przebiegu.
 
 ## 7. Docker i docker-compose
 
@@ -276,12 +282,12 @@ Te punkty nie były wprost rozstrzygnięte w odpowiedziach, przyjąłem je domy�
 4. Repozytorium publiczne (przy licencji MIT); w razie potrzeby zmienimy.
 5. Domyślne interwały kanałów: 1 h; propozycje w GUI: 15 min, 1 h, 6 h, 24 h.
 6. Kanał należy do jednego folderu. Feedly pozwala na kilka kategorii przy jednym feedzie — przyjmuję jeden (pierwszy), do potwierdzenia.
-7. Reguły kanału **zastępują** reguły folderu (bez łączenia), reguły globalne zawsze dochodzą (FR-14c, FR-14d).
+7. Reguły kanału **zastępują** reguły folderu (bez łączenia), reguły globalne zawsze dochodzą; pierwsza reguła dodana do kanału kopiuje reguły folderu do kanału (FR-14c, FR-14d).
 8. `aging_days` i wyjątki dziedziczą tak samo: kanał → folder → globalnie (FR-14e).
 
 ## 13. Stan implementacji (v0.4)
 
-### 13.1 Zrobione i przetestowane (52 testy, `pytest`)
+### 13.1 Zrobione i przetestowane (91 testów, `pytest`)
 
 - Konfiguracja YAML z walidacją (pydantic), zapis atomowy, przeładowanie ręcznych zmian (sekcja 5).
 - Reguły: contains / starts_with / equals / regex, bez wielkości liter, walidacja regexa, wyjątki, dziedziczenie global → folder → kanał (3.4a), aging po dacie publikacji, wpisy zapisane na później pomijane.
@@ -291,6 +297,7 @@ Te punkty nie były wprost rozstrzygnięte w odpowiedziach, przyjąłem je domy�
 - Scheduler: co minutę uruchamia kanały, których interwał minął.
 - Statystyki żądań (FR-33b, FR-33c) i szare wiersze agingu w historii (FR-33a).
 - GUI na porcie 8080: dashboard, kanały (zbiorowy interwał), reguły kanału/folderu/globalne z podglądem, ustawienia, historia z listą wpisów przebiegu, logowanie tokenem z weryfikacją.
+- Inspekcja wpisów kanału (FR-21a–c): lista nieprzeczytanych wpisów z decyzją i szybkie dodawanie reguł/wyjątków z tego widoku.
 - `truststore` — certyfikaty systemowe (firmowe proxy).
 - Dockerfile (Python 3.12-slim, użytkownik uid 10001, healthcheck na `/healthz`), `docker-compose.yml` (`./data` → `/data`, port 8080), `.dockerignore`, `data/config.example.yaml`, `LICENSE` (MIT), `README.md`.
 - Workflow `ci.yml` (testy `pytest` na push do `main` i na pull requestach) oraz `docker-publish.yml` (build, smoke test `/healthz`, publikacja do GHCR z tagami `latest`, `sha-…`, `X.Y.Z`, `X.Y`).
