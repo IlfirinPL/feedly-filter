@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Login</h1>
+<table>
+  <tr><th>Session</th><td>{% if session_status.present %}present{% else %}missing{% endif %}</td></tr>
+  <tr><th>Cookies</th><td>{% if session_status.has_cookie %}present{% else %}none{% endif %}</td></tr>
+  <tr><th>Last updated</th><td>{{ session_status.updated or "—" }}</td></tr>
+</table>
+<p class="muted">Automatic login is blocked by Cloudflare. Paste the token and cookies from your browser session. The token is checked against Feedly first and saved only if it works. Values are never shown again.</p>
+<form method="post" action="/login">
+  <p>Authorization (Bearer token)<br><textarea name="authorization" rows="3" cols="90" required></textarea></p>
+  <p>Cookie header (optional)<br><textarea name="cookie" rows="4" cols="90"></textarea></p>
+  <button>Save session</button>
+</form>
+{% endblock %}

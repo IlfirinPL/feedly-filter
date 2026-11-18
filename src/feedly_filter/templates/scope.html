@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% macro rule_rows(scope, list_name, rules) %}
+<table>
+  <tr><th>#</th><th>Field</th><th>Operator</th><th>Value</th><th>Comment</th><th>Enabled</th><th></th></tr>
+  {% for rule in rules %}
+  <tr>
+    <td>{{ loop.index0 }}</td><td>{{ rule.field }}</td><td>{{ rule.op }}</td>
+    <td><code>{{ rule.value }}</code></td><td>{{ rule.comment }}</td><td>{{ "yes" if rule.enabled else "no" }}</td>
+    <td>
+      <form method="post" action="/scope" class="inline">
+        <input type="hidden" name="scope" value="{{ scope }}">
+        <input type="hidden" name="action" value="toggle">
+        <input type="hidden" name="list" value="{{ list_name }}">
+        <input type="hidden" name="index" value="{{ loop.index0 }}">
+        <button>{{ "Disable" if rule.enabled else "Enable" }}</button>
+      </form>
+      <form method="post" action="/scope" class="inline">
+        <input type="hidden" name="scope" value="{{ scope }}">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="list" value="{{ list_name }}">
+        <input type="hidden" name="index" value="{{ loop.index0 }}">
+        <button>Delete</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="muted">None</td></tr>
+  {% endfor %}
+</table>
+{% endmacro %}
+
+{% macro add_form(scope, action, label) %}
+<form method="post" action="/scope">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  <input type="hidden" name="action" value="{{ action }}">
+  <select name="field">
+    <option value="title">title</option>
+    <option value="content">content</option>
+    <option value="author">author</option>
+    <option value="url">url</option>
+  </select>
+  <select name="op">
+    <option value="contains">contains</option>
+    <option value="starts_with">starts with</option>
+    <option value="equals">equals</option>
+    <option value="regex">regex</option>
+  </select>
+  <input name="value" required size="40" placeholder="value (case-insensitive)">
+  <input name="comment" size="20" placeholder="comment">
+  <button>{{ label }}</button>
+</form>
+{% endmacro %}
+
+{% block content %}
+<h1>{{ heading }}</h1>
+{% if kind == "feed" %}
+<p class="muted">Folder: {{ folder or "—" }} · id: <code>{{ key }}</code></p>
+<form method="post" action="/scope" class="inline">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  <input type="hidden" name="action" value="set_interval">
+  Check every <input type="number" name="minutes" min="5" value="{{ interval }}"> min
+  <button>Save</button>
+</form>
+<form method="post" action="/scope" class="inline">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  <input type="hidden" name="action" value="set_override">
+  <label><input type="checkbox" name="override" {% if override %}checked{% endif %}> Own rules replace folder rules</label>
+  <button>Save</button>
+</form>
+{% endif %}
+
+{% if kind != "global" %}
+<form method="post" action="/scope">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  <input type="hidden" name="action" value="set_aging">
+  Aging in days (empty = inherit): <input type="number" name="days" min="0" value="{{ own_aging if own_aging is not none else '' }}">
+  <button>Save</button>
+  <span class="muted">Effective: {{ eff_aging }} days (0 = off)</span>
+</form>
+{% endif %}
+
+<h2>Blacklist rules{% if kind == "feed" and not override %} <span class="muted">(not overriding: folder rules apply){% endif %}</span></h2>
+{{ rule_rows(scope, "rules", own_rules) }}
+{{ add_form(scope, "add_rule", "Add rule") }}
+
+<h2>Whitelist (never marked)</h2>
+{{ rule_rows(scope, "whitelist", own_whitelist) }}
+{{ add_form(scope, "add_whitelist", "Add exception") }}
+
+<h2>Effective rules</h2>
+<table>
+  <tr><th>Source</th><th>Field</th><th>Operator</th><th>Value</th><th>Enabled</th></tr>
+  {% for rule, source in eff_rules %}
+  <tr><td>{{ source }}</td><td>{{ rule.field }}</td><td>{{ rule.op }}</td><td><code>{{ rule.value }}</code></td><td>{{ "yes" if rule.enabled else "no" }}</td></tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">No active rules</td></tr>
+  {% endfor %}
+</table>
+<h2>Effective whitelist</h2>
+<table>
+  <tr><th>Source</th><th>Field</th><th>Operator</th><th>Value</th><th>Enabled</th></tr>
+  {% for rule, source in eff_whitelist %}
+  <tr><td>{{ source }}</td><td>{{ rule.field }}</td><td>{{ rule.op }}</td><td><code>{{ rule.value }}</code></td><td>{{ "yes" if rule.enabled else "no" }}</td></tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">None</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

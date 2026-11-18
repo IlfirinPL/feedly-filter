@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Feeds</h1>
+<form method="post" action="/feeds/interval">
+<table>
+  <tr>
+    <th></th><th>Feed</th><th>Folder</th><th>Unread</th><th>Velocity</th><th>Interval (min)</th><th>Rules from</th><th>Own rules</th><th></th>
+  </tr>
+  {% for row in rows %}
+  <tr>
+    <td><input type="checkbox" name="ids" value="{{ row.info.id }}"></td>
+    <td><a href="/feed?id={{ row.info.id | urlencode }}">{{ row.info.title }}</a></td>
+    <td>{{ row.info.folder or "—" }}</td>
+    <td>{{ row.info.unread }}</td>
+    <td>{{ "%.1f"|format(row.info.velocity) }}</td>
+    <td>{{ row.interval }}</td>
+    <td>{{ row.rule_source }}</td>
+    <td>{{ row.own_rules }}</td>
+    <td>
+      <form method="post" action="/run" class="inline">
+        <input type="hidden" name="feed_id" value="{{ row.info.id }}">
+        <button>Run</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="9" class="muted">No feeds loaded. Check the session on the Login page.</td></tr>
+  {% endfor %}
+</table>
+<label>Interval for selected feeds: <input type="number" name="minutes" min="5" value="60"> min</label>
+<button>Set interval</button>
+</form>
+{% endblock %}

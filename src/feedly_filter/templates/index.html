@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+<table>
+  <tr><th>Dry run</th><td>{% if config.dry_run %}<span class="dry">ON</span>: runs only report, nothing is marked{% else %}OFF: entries are marked as read{% endif %}</td></tr>
+  <tr><th>Feeds</th><td>{{ feed_count }}</td></tr>
+  <tr><th>Session</th><td>{% if session_status.present %}present, updated {{ session_status.updated }}{% else %}missing, see <a href="/login">Login</a>{% endif %}</td></tr>
+  <tr><th>Aging</th><td>{% if config.aging.enabled %}{{ config.aging.days }} days (by publication date){% else %}off{% endif %}</td></tr>
+</table>
+<form method="post" action="/run"><button>Run now (all feeds)</button></form>
+
+<h2>Recent runs</h2>
+<table>
+  <tr><th>#</th><th>Feed</th><th>Started</th><th>Dry run</th><th>Processed</th><th>Marked</th><th>Error</th></tr>
+  {% for run in runs %}
+  <tr>
+    <td>{{ run[0] }}</td><td>{{ run[1] }}</td><td>{{ run[2][:19] }}</td>
+    <td>{{ "yes" if run[4] else "no" }}</td><td>{{ run[5] }}</td><td>{{ run[6] }}</td><td>{{ run[7] }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7" class="muted">No runs yet</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

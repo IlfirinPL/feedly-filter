@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} · feedly-filter</title>
+<style>
+body { font-family: system-ui, sans-serif; margin: 0; color: #222; }
+nav { background: #2b6e3f; padding: .6rem 1rem; }
+nav a { color: #fff; margin-right: 1rem; text-decoration: none; }
+main { padding: 1rem 1.5rem; max-width: 1150px; }
+table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; }
+th, td { border-bottom: 1px solid #ddd; padding: .35rem .5rem; text-align: left; font-size: .92rem; vertical-align: top; }
+.msg { padding: .5rem .8rem; background: #e8f5e9; margin: .5rem 0; }
+.err { padding: .5rem .8rem; background: #fdecea; margin: .5rem 0; }
+.muted { color: #777; }
+.dry { color: #8a6d00; font-weight: 600; }
+form.inline { display: inline-block; margin-right: 1rem; }
+input, select, textarea { padding: .25rem; }
+button { padding: .3rem .7rem; }
+code { word-break: break-all; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="/">Dashboard</a>
+  <a href="/feeds">Feeds</a>
+  <a href="/folders">Folders</a>
+  <a href="/rules">Global rules</a>
+  <a href="/settings">Settings</a>
+  <a href="/history">History</a>
+  <a href="/login">Login</a>
+</nav>
+<main>
+{% if msg %}<div class="msg">{{ msg }}</div>{% endif %}
+{% if error %}<div class="err">{{ error }}</div>{% endif %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

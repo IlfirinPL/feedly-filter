@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Settings</h1>
+<form method="post" action="/settings">
+<table>
+  <tr><th>Dry run</th><td><label><input type="checkbox" name="dry_run" {% if config.dry_run %}checked{% endif %}> Report only, do not mark anything</label></td></tr>
+  <tr><th>Aging</th><td>
+    <label><input type="checkbox" name="aging_enabled" {% if config.aging.enabled %}checked{% endif %}> enabled</label>
+    older than <input type="number" name="days" min="0" value="{{ config.aging.days }}"> days (publication date)
+  </td></tr>
+  <tr><th>Timezone</th><td><input name="timezone" value="{{ config.timezone }}"></td></tr>
+  <tr><th>History limit</th><td><input type="number" name="history_limit_mb" min="1" value="{{ config.history_limit_mb }}"> MB</td></tr>
+</table>
+<button>Save settings</button>
+</form>
+{% endblock %}
