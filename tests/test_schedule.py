@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -37,6 +37,26 @@ def test_feed_without_interval_uses_default_and_override_wins():
 def test_inverted_hours_are_rejected():
     with pytest.raises(ValidationError):
         Config(active_from=22, active_until=7)
+
+
+def test_feeds_with_the_same_interval_run_at_different_minutes():
+    config = Config(feeds=[FeedSettings(id=f"feed/{number}") for number in range(20)])
+    assert len({config.schedule_phase(f"feed/{number}") for number in range(20)}) > 10
+
+
+def test_hourly_feed_runs_once_an_hour_inside_working_hours_at_its_own_minute():
+    config = Config()
+    runs = config.scheduled_runs("feed/1", date(2026, 11, 18))
+    assert [run.hour for run in runs] == list(range(7, 22))  # 7:xx … 21:xx, nothing at 22:00 or later
+    assert all(run.minute == config.schedule_phase("feed/1") for run in runs)
+
+
+def test_next_run_is_the_next_planned_time_and_wraps_to_the_next_morning():
+    config = Config()
+    next_run = config.next_scheduled_run("feed/1", warsaw(9))
+    assert warsaw(9) < next_run <= warsaw(10)
+    after_hours = config.next_scheduled_run("feed/1", warsaw(22, 30))
+    assert (after_hours.day, after_hours.hour) == (19, 7)
 
 
 def test_unknown_timezone_is_rejected():
@@ -100,9 +120,13 @@ def test_due_feeds_use_the_default_interval(tmp_path):
     now = warsaw(9)
     engine = Engine(services.store, services.session, services.history, client_factory=Two, clock=lambda: now)
     engine.refresh_catalog()
-    services.history.set_last_run("feed/1", now - timedelta(minutes=10))
+    planned = services.store.config.next_scheduled_run("feed/1", now)
+    assert now < planned <= now + timedelta(minutes=15)
+    engine.clock = lambda: planned + timedelta(minutes=1)
+    assert engine.due_feed_ids() == ["feed/1"]
+    services.history.set_last_run("feed/1", planned + timedelta(minutes=1))
     assert engine.due_feed_ids() == []
-    engine.clock = lambda: now + timedelta(minutes=6)
+    engine.clock = lambda: planned + timedelta(minutes=16)
     assert engine.due_feed_ids() == ["feed/1"]
 
 

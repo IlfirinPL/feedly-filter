@@ -102,8 +102,12 @@ ignoring case) is not repeated; you get a message instead.
 ## Schedule
 
 Feeds are checked on their own interval (default 60 minutes, set in **Settings**; a feed can have its own, and an empty
-field means the default). Scheduled checks run only between **7:00 and 22:00** local time by default (the end hour is
-not included); change this in Settings. Manual runs from the GUI are not limited by the hours.
+field means the default). Each feed runs at its own minute inside every interval: with the 60-minute default and working
+hours from 7:00, a feed runs once an hour between `HH:00` and `HH:59`, at a fixed minute that depends on the feed, so the
+feeds do not all run at the same time. The **Feeds** page shows the next planned run of each feed.
+
+Scheduled checks run only between **7:00 and 22:00** local time by default (the end hour is not included); change this
+in Settings. Manual runs from the GUI are not limited by the hours.
 
 ## Stats
 

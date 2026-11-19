@@ -89,6 +89,11 @@ def test_folders_are_listed_on_the_feeds_page(tmp_path):
     assert client.get("/folders").headers["location"] == "/feeds"  # old link still works
 
 
+def test_feeds_page_has_a_next_run_column(tmp_path):
+    client, _ = make_app(tmp_path)
+    assert "<th>Next run</th>" in client.get("/feeds").text
+
+
 def test_aging_entries_are_shaded_in_history(tmp_path):
     client, services = make_app(tmp_path)
     run = services.history.start_run("feed/1", "Example", False, datetime(2026, 11, 18, tzinfo=UTC))

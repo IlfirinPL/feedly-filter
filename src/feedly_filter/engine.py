@@ -109,6 +109,7 @@ class Engine:
         self.client_factory = client_factory or (
             lambda headers: FeedlyClient(headers, on_request=history.record_request))
         self.clock = clock
+        self.started_at = clock()
         self.catalog_ttl = catalog_ttl
         self.catalog: dict[str, FeedInfo] = {}
         self._catalog_at: datetime | None = None
@@ -144,14 +145,17 @@ class Engine:
         self._catalog_at = None
 
     def due_feed_ids(self) -> list[str]:
+        """Feeds whose planned run has come since they last ran.
+
+        A feed that has never run waits for its first planned time after the engine started.
+        """
         now = self.clock()
         config = self.store.config
         last_runs = self.history.last_runs()
         due = []
         for feed_id in self.catalog:
-            interval = timedelta(minutes=config.interval_for(feed_id))
-            previous = last_runs.get(feed_id)
-            if previous is None or now - previous >= interval:
+            planned = config.last_scheduled_run(feed_id, now)
+            if planned > last_runs.get(feed_id, self.started_at):
                 due.append(feed_id)
         return due
 

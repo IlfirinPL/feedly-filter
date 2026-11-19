@@ -158,13 +158,17 @@ def test_background_run_refused_while_busy(services):
     assert not engine.is_running()
 
 
-def test_due_feeds_respect_interval(services):
+def test_due_feeds_run_once_per_interval_at_their_planned_time(services):
     store, history, fake, engine = services
     engine.refresh_catalog()
+    planned = store.config.next_scheduled_run("feed/1", NOW)
+    engine.clock = lambda: planned - timedelta(minutes=1)
+    assert engine.due_feed_ids() == []
+    engine.clock = lambda: planned + timedelta(minutes=1)
     assert engine.due_feed_ids() == ["feed/1"]
     engine.run()
     assert engine.due_feed_ids() == []
-    engine.clock = lambda: NOW + timedelta(minutes=61)
+    engine.clock = lambda: planned + timedelta(minutes=61)
     assert engine.due_feed_ids() == ["feed/1"]
 
 

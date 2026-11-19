@@ -20,7 +20,7 @@
 <form method="post" action="/feeds/interval">
 <table class="sortable">
   <tr>
-    <th></th><th>Feed</th><th>Folder</th><th>Unread</th><th>Velocity</th><th>Interval (min)</th><th>Rules from</th><th>Own rules</th><th></th>
+    <th></th><th>Feed</th><th>Folder</th><th>Unread</th><th>Velocity</th><th>Interval (min)</th><th>Next run</th><th>Rules from</th><th>Own rules</th><th></th>
   </tr>
   {% for row in rows %}
   <tr>
@@ -30,6 +30,7 @@
     <td>{{ row.info.unread }}</td>
     <td>{{ "%.1f"|format(row.info.velocity) }}</td>
     <td>{{ row.interval }}</td>
+    <td>{{ row.next_run }}</td>
     <td>{{ row.rule_source }}</td>
     <td>{{ row.own_rules }}</td>
     <td>
@@ -40,7 +41,7 @@
     </td>
   </tr>
   {% else %}
-  <tr><td colspan="9" class="muted">No feeds loaded. Check the session on the Login page.</td></tr>
+  <tr><td colspan="10" class="muted">No feeds loaded. Check the session on the Login page.</td></tr>
   {% endfor %}
 </table>
 <label>Interval for selected feeds: <input type="number" name="minutes" min="5" value="60"> min</label>

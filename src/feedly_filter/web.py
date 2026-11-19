@@ -324,6 +324,7 @@ def create_app(services: Services) -> FastAPI:
             rows.append({
                 "info": info,
                 "interval": store.config.interval_for(info.id),
+                "next_run": store.config.next_scheduled_run(info.id, engine.clock()).strftime("%Y-%m-%d %H:%M"),
                 "rule_source": rule_source_label(store.config, info.id, info.folder),
                 "own_rules": len(feed.rules) if feed else 0,
             })

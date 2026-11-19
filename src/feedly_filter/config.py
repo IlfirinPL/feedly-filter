@@ -6,8 +6,9 @@ import os
 import re
 import tempfile
 import threading
+import zlib
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal, TypeVar
 from zoneinfo import ZoneInfo
@@ -105,6 +106,36 @@ class Config(BaseModel):
         if feed is not None and feed.interval_minutes is not None:
             return feed.interval_minutes
         return self.default_interval_minutes
+
+    def working_minutes(self) -> int:
+        return (self.active_until - self.active_from) * 60
+
+    def schedule_phase(self, feed_id: str) -> int:
+        """Minute inside the interval, counted from the start of working hours, when this feed runs.
+
+        It comes from the feed id, so it stays the same after a restart and feeds spread over the interval.
+        """
+        return zlib.crc32(feed_id.encode()) % min(self.interval_for(feed_id), self.working_minutes())
+
+    def scheduled_runs(self, feed_id: str, day: date) -> list[datetime]:
+        """Planned runs of one day: one per interval at the feed's phase, all inside working hours."""
+        start = datetime(day.year, day.month, day.day, self.active_from, tzinfo=ZoneInfo(self.timezone))
+        return [start + timedelta(minutes=minute) for minute in
+                range(self.schedule_phase(feed_id), self.working_minutes(), self.interval_for(feed_id))]
+
+    def last_scheduled_run(self, feed_id: str, now: datetime) -> datetime:
+        today = now.astimezone(ZoneInfo(self.timezone)).date()
+        passed = [run for run in self.scheduled_runs(feed_id, today) if run <= now]
+        if passed:
+            return passed[-1]
+        return self.scheduled_runs(feed_id, today - timedelta(days=1))[-1]
+
+    def next_scheduled_run(self, feed_id: str, now: datetime) -> datetime:
+        today = now.astimezone(ZoneInfo(self.timezone)).date()
+        upcoming = [run for run in self.scheduled_runs(feed_id, today) if run > now]
+        if upcoming:
+            return upcoming[0]
+        return self.scheduled_runs(feed_id, today + timedelta(days=1))[0]
 
     def find_folder(self, name: str) -> FolderSettings | None:
         return next((folder for folder in self.folders if folder.name == name), None)

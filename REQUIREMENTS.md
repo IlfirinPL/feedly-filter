@@ -63,7 +63,9 @@ Konfiguracja jest przechowywana w katalogu `data/`. Narzędzie działa w Dockerz
 
 - FR-9: Każdy kanał ma własny **interwał sprawdzania**. Domyślny interwał (60 min) ustawiany jest w Settings i obowiązuje kanały bez własnego interwału. Puste pole interwału na kanale oznacza „domyślny”.
 - FR-10: Interwał ustawiany z poziomu GUI (na kanale lub zbiorczo dla zaznaczonych kanałów) i zapisywany w `config.yaml`.
-- FR-11: Scheduler działa w krótkim cyklu (np. co minutę) i uruchamia tylko kanały, których interwał minął od ostatniego sprawdzenia. Działa **tylko w godzinach pracy**: domyślnie 7:00–22:00 czasu lokalnego (`timezone`), koniec wyłączony. Ręczne przebiegi z GUI nie są ograniczone godzinami.
+- FR-11: Scheduler działa w krótkim cyklu (np. co minutę) i uruchamia kanał, gdy nadszedł jego zaplanowany czas od ostatniego sprawdzenia. Działa **tylko w godzinach pracy**: domyślnie 7:00–22:00 czasu lokalnego (`timezone`), koniec wyłączony. Ręczne przebiegi z GUI nie są ograniczone godzinami.
+- FR-11a: Kanały nie startują wszystkie naraz. Każdy kanał ma stałą minutę w obrębie swojego interwału, liczoną od początku godzin pracy, wyliczaną z identyfikatora kanału (ta sama po restarcie). Przykład: interwał 60 min, start 7:00, kanał o minucie 23 jest sprawdzany o 9:23 — czyli między 9:00 a 9:59. Plan obejmuje tylko godziny pracy. Kanał, który nigdy nie działał, czeka na pierwszy zaplanowany czas po starcie.
+- FR-11b: Strona Feeds pokazuje kolumnę **Next run**: najbliższy zaplanowany przebieg kanału w czasie lokalnym (po godzinach pracy — pierwszy termin następnego dnia).
 - FR-12: Dla pomocy w doborze interwału GUI pokazuje średnią liczbę nowych wpisów na dobę dla kanału (wyliczaną z historii przebiegów).
 - FR-13: Przycisk „Uruchom teraz” działa globalnie (wszystkie kanały) lub dla pojedynczego kanału.
 
@@ -194,7 +196,7 @@ Prosty interfejs serwerowy (bez ciężkiego frontendu). Język domyślny: **angi
 Ekrany:
 
 1. **Dashboard** — status (połączenie/sesja Feedly, ostatni przebieg, najbliższe sprawdzenia), przełącznik „Dry run: ON/OFF” (z potwierdzeniem przy wyłączeniu), przyciski „Run now (follows dry-run setting)” i „Force run: apply marks now” (z potwierdzeniem), informacja, gdy przebieg trwa.
-2. **Feeds** — nad tabelą lista folderów (nazwa → szczegóły folderu, liczba kanałów, nieprzeczytane). Tabela kanałów: nazwa, folder, nieprzeczytane, średnio nowych wpisów/dobę, interwał, źródło reguł (własne / folder / globalne), nadpisany aging. Zbiorowa zmiana interwału. Kliknięcie → szczegóły kanału.
+2. **Feeds** — nad tabelą lista folderów (nazwa → szczegóły folderu, liczba kanałów, nieprzeczytane). Tabela kanałów: nazwa, folder, nieprzeczytane, średnio nowych wpisów/dobę, interwał, następny przebieg (FR-11b), źródło reguł (własne / folder / globalne), nadpisany aging. Zbiorowa zmiana interwału. Kliknięcie → szczegóły kanału.
 3. **Feed detail** — reguły kanału (pole, operator, wartość, aktywna), tryb „dziedzicz z folderu” lub własne, wyjątki, interwał, aging. Przy dodawaniu reguły przycisk „Preview matches” pokazuje liczbę wpisów, które by oznaczyła (FR-30b).
 4. **Folder detail** — szczegóły folderu (kategorii Feedly) z listy na stronie Feeds: reguły folderu, wyjątki, `aging_days`. Edycja reguł folderu dziedziczona przez kanały bez własnych reguł. Stary adres `/folders` przekierowuje na Feeds.
 5. **Global rules & whitelist** — reguły globalne i wyjątki globalne.
@@ -287,14 +289,14 @@ Te punkty nie były wprost rozstrzygnięte w odpowiedziach, przyjąłem je domy�
 
 ## 13. Stan implementacji (v0.4)
 
-### 13.1 Zrobione i przetestowane (91 testów, `pytest`)
+### 13.1 Zrobione i przetestowane (96 testów, `pytest`)
 
 - Konfiguracja YAML z walidacją (pydantic), zapis atomowy, przeładowanie ręcznych zmian (sekcja 5).
 - Reguły: contains / starts_with / equals / regex, bez wielkości liter, walidacja regexa, wyjątki, dziedziczenie global → folder → kanał (3.4a), aging po dacie publikacji, wpisy zapisane na później pomijane.
 - Klient Feedly: nagłówki `Authorization` i `Cookie` z `data/session.json`, ponawianie przy 429/5xx, `AuthError` przy 401/403, błędy sieci/TLS jako `FeedlyError`, paginacja `continuation`.
 - Silnik: przebiegi per kanał, dry-run (`would_mark`), wymuszony przebieg, blokada równoległych przebiegów, wybór kanałów wg interwału, brak sesji → błąd bez zapytania do sieci. Oznaczanie zbiorcze: jeden przebieg = jedna seria żądań `markAsRead` dla wszystkich kanałów; błąd serii zapisuje się jako błąd, nie jako oznaczone.
 - Historia SQLite: przebiegi, oznaczone wpisy z regułą, czas ostatniego przebiegu, przycinanie do limitu (`VACUUM`).
-- Scheduler: co minutę uruchamia kanały, których interwał minął.
+- Scheduler: co minutę uruchamia kanały, których zaplanowany czas nadszedł; kanały rozłożone w obrębie interwału (FR-11a), kolumna „Next run” na Feeds (FR-11b).
 - Statystyki żądań (FR-33b, FR-33c) i szare wiersze agingu w historii (FR-33a).
 - GUI na porcie 8080: dashboard, kanały (zbiorowy interwał), reguły kanału/folderu/globalne z podglądem, ustawienia, historia z listą wpisów przebiegu, logowanie tokenem z weryfikacją.
 - Inspekcja wpisów kanału (FR-21a–c): lista nieprzeczytanych wpisów z decyzją i szybkie dodawanie reguł/wyjątków z tego widoku.

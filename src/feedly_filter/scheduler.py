@@ -1,4 +1,4 @@
-"""Background loop: once a minute runs the feeds whose interval has passed."""
+"""Background loop: once a minute runs the feeds whose planned time has come."""
 
 from __future__ import annotations
 
