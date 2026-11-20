@@ -112,7 +112,7 @@ Konfiguracja jest przechowywana w katalogu `data/`. Narzędzie działa w Dockerz
 - FR-29: Każdy przebieg zapisuje podsumowanie: czas, kanał, liczba przetworzonych wpisów, liczba oznaczonych wg reguły, wg agingu, liczba błędów.
 - FR-30: Oznaczanie jest idempotentne — ponowny przebieg nie oznacza ponownie tych samych wpisów.
 - FR-30a: Wymuszony przebieg („Force run") stosuje oznaczenia od razu, nawet gdy dry-run jest włączony. Wymaga potwierdzenia w GUI.
-- FR-30b: Podgląd reguły („Preview matches") przed zapisem pokazuje, ile aktualnie nieprzeczytanych wpisów reguła oznaczyłaby, z przykładowymi tytułami. Zakres liczy się jak przy przebiegu (wpisy zapisane i wyjątki pomijane, reguła folderu nie dotyczy kanałów z własnymi regułami). Aging nie jest wliczany. Podgląd niczego nie zmienia.
+- FR-30b: Podgląd reguły („Preview matches”) przed zapisem pokazuje, ile aktualnie nieprzeczytanych wpisów reguła oznaczyłaby, z przykładowymi tytułami. Zakres liczy się jak przy przebiegu (wpisy zapisane i wyjątki pomijane, reguła folderu nie dotyczy kanałów z własnymi regułami). Aging nie jest wliczany. Podgląd niczego nie zmienia. Po podglądzie wartości reguły zostają w formularzach „Add rule” i „Add exception”, więc użytkownik wybiera, czy dodać ją jako regułę, czy jako wyjątek.
 - FR-30c: Powód oznaczenia zawiera regułę (pole, operator, wartość) i jej komentarz, jeśli został podany.
 
 ### 3.7 Historia i logi
@@ -195,8 +195,8 @@ Prosty interfejs serwerowy (bez ciężkiego frontendu). Język domyślny: **angi
 
 Ekrany:
 
-1. **Dashboard** — status (połączenie/sesja Feedly, ostatni przebieg, najbliższe sprawdzenia), przełącznik „Dry run: ON/OFF” (z potwierdzeniem przy wyłączeniu), przyciski „Run now (follows dry-run setting)” i „Force run: apply marks now” (z potwierdzeniem), informacja, gdy przebieg trwa.
-2. **Feeds** — nad tabelą lista folderów (nazwa → szczegóły folderu, liczba kanałów, nieprzeczytane). Tabela kanałów: nazwa, folder, nieprzeczytane, średnio nowych wpisów/dobę, interwał, następny przebieg (FR-11b), źródło reguł (własne / folder / globalne), nadpisany aging. Zbiorowa zmiana interwału. Kliknięcie → szczegóły kanału.
+1. **Dashboard** — status (połączenie/sesja Feedly, ostatni przebieg, najbliższe sprawdzenia), przełącznik „Dry run: ON/OFF” (z potwierdzeniem przy wyłączeniu), przyciski „Run now (follows dry-run setting)” i „Force run: apply marks now” (z potwierdzeniem), informacja, gdy przebieg trwa. Gdy przebieg trwa, strona sama czeka, aż się skończy (odpytuje `/run/status`), i przeładowuje się, żeby tabele pokazały wynik.
+2. **Feeds** — nad tabelą lista folderów (nazwa → szczegóły folderu, liczba kanałów, nieprzeczytane, przycisk „Run folder” uruchamiający przebieg tylko dla kanałów tego folderu). Tabela kanałów: nazwa, folder, nieprzeczytane, średnio nowych wpisów/dobę, interwał, następny przebieg (FR-11b), źródło reguł (własne / folder / globalne), nadpisany aging. Zbiorowa zmiana interwału. Kliknięcie → szczegóły kanału.
 3. **Feed detail** — reguły kanału (pole, operator, wartość, aktywna), tryb „dziedzicz z folderu” lub własne, wyjątki, interwał, aging. Przy dodawaniu reguły przycisk „Preview matches” pokazuje liczbę wpisów, które by oznaczyła (FR-30b).
 4. **Folder detail** — szczegóły folderu (kategorii Feedly) z listy na stronie Feeds: reguły folderu, wyjątki, `aging_days`. Edycja reguł folderu dziedziczona przez kanały bez własnych reguł. Stary adres `/folders` przekierowuje na Feeds.
 5. **Global rules & whitelist** — reguły globalne i wyjątki globalne.

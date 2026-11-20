@@ -1,3 +1,4 @@
+import time
 from datetime import UTC, datetime
 
 import httpx
@@ -110,6 +111,20 @@ def test_preview_with_invalid_regex_is_rejected_before_fetching(tmp_path):
     response = client.post("/scope/preview", data={"scope": "global", "field": "title", "op": "regex", "value": "(bad"})
     assert response.status_code == 303
     assert "error=" in response.headers["location"]
+
+
+def test_preview_keeps_the_rule_in_both_add_forms(tmp_path):
+    client, services = make_app(tmp_path, client_factory=FeedClient)
+    services.session.save("abc123", "")
+    response = client.post("/scope/preview", data={
+        "scope": "global", "field": "content", "op": "starts_with", "value": "sponsored", "comment": "ads",
+    })
+    assert response.status_code == 200
+    assert response.text.count('value="sponsored"') == 2  # add rule and add exception both keep it
+    assert '<option value="content" selected>' in response.text
+    assert '<option value="starts_with" selected>' in response.text
+    assert 'value="ads"' in response.text
+    assert services.store.config.global_rules == []  # the preview saves nothing
 
 
 def test_invalid_regex_is_shown_as_error(tmp_path):
@@ -365,3 +380,61 @@ def test_inspect_invalid_regex_is_shown_as_error(tmp_path):
         "field": "title", "op": "regex", "value": "(bad",
     })
     assert response.headers["location"].startswith("/inspect?source=feed%7Cfeed%2F1&error=")
+
+
+class TwoFolderClient(OkClient):
+    def subscriptions(self):
+        return [
+            {"id": "feed/1", "title": "Alpha", "categories": [{"label": "Tech"}]},
+            {"id": "feed/2", "title": "Beta", "categories": [{"label": "News"}]},
+        ]
+
+    def unread_counts(self):
+        return {"unreadcounts": []}
+
+    def stream_entries(self, stream_id):
+        return []
+
+
+def wait_until_idle(engine):
+    deadline = time.monotonic() + 5
+    while engine.is_running() and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+
+def test_folder_run_only_checks_feeds_of_that_folder(tmp_path):
+    client, services = make_app(tmp_path, client_factory=TwoFolderClient)
+    services.session.save("abc123", "")
+    response = client.post("/run", data={"folder": "Tech", "mode": "normal"})
+    assert response.headers["location"].startswith("/?msg=Run%20started%20for%20folder%20Tech")
+    wait_until_idle(services.engine)
+    assert {run[1] for run in services.history.recent_runs(5)} == {"Alpha"}
+
+
+def test_folder_without_feeds_is_not_run(tmp_path):
+    client, services = make_app(tmp_path, client_factory=TwoFolderClient)
+    services.session.save("abc123", "")
+    services.store.update(lambda config: config.get_folder("Empty"))
+    response = client.post("/run", data={"folder": "Empty"})
+    assert "error=" in response.headers["location"]
+    assert services.history.recent_runs(5) == []  # an empty list would have meant every feed
+
+
+def test_run_status_reports_an_active_run(tmp_path):
+    client, services = make_app(tmp_path)
+    assert client.get("/run/status").json() == {"running": False}
+    assert services.engine._run_lock.acquire(blocking=False)
+    try:
+        assert client.get("/run/status").json() == {"running": True}
+        assert 'fetch("/run/status"' in client.get("/").text  # the dashboard waits for the run to end
+    finally:
+        services.engine._run_lock.release()
+    assert 'fetch("/run/status"' not in client.get("/").text
+
+
+def test_feeds_page_has_a_run_button_per_folder(tmp_path):
+    client, services = make_app(tmp_path, client_factory=TwoFolderClient)
+    services.session.save("abc123", "")
+    text = client.get("/feeds").text
+    assert '<input type="hidden" name="folder" value="Tech">' in text
+    assert '<input type="hidden" name="folder" value="News">' in text

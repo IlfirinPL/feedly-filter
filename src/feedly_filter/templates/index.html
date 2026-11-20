@@ -23,7 +23,7 @@
   </td></tr>
 </table>
 <p>
-  {% if running %}<span class="dry">A run is in progress…</span> Refresh this page to see the result in the table below.{% endif %}
+  {% if running %}<span class="dry">A run is in progress…</span> This page reloads when it finishes.{% endif %}
 </p>
 <form method="post" action="/run" class="inline">
   <input type="hidden" name="mode" value="normal">
@@ -48,4 +48,19 @@
   <tr><td colspan="7" class="muted">No runs yet</td></tr>
   {% endfor %}
 </table>
+{% if running %}
+<script>
+  // wait until the active run (manual or scheduled) is finished, then reload so the tables show its results
+  function waitForRun() {
+    fetch("/run/status", {cache: "no-store"})
+      .then(function (response) { return response.json(); })
+      .then(function (state) {
+        if (state.running) setTimeout(waitForRun, 2000);
+        else location.replace("/");  // drops the ?msg= of the redirect after the click
+      })
+      .catch(function () { setTimeout(waitForRun, 5000); });
+  }
+  waitForRun();
+</script>
+{% endif %}
 {% endblock %}

@@ -72,10 +72,12 @@ Treat the token like a password: it gives full access to the account.
   Adding the first rule to a feed copies the folder's rules into it, so nothing that applied before stops applying.
   Global rules always apply.
 - Folders are listed at the top of the **Feeds** page; click a folder to edit its rules, aging and whitelist.
+  **Run folder** next to a folder runs the filter for its feeds only.
 - **Whitelist** entries are never marked, even when a rule matches.
 - **Aging** marks entries older than N days by publication date. Set it globally, per folder or per feed; `0` turns it off.
 - Entries saved for later are never marked.
-- **Preview matches** shows how many unread entries a rule would mark right now, before you save it.
+- **Preview matches** shows how many unread entries a rule would mark right now, before you save it. The rule stays in the
+  form afterwards, so you can add it as a rule or as an exception.
 
 ## Inspect
 
@@ -98,6 +100,7 @@ ignoring case) is not repeated; you get a message instead.
 - While **dry-run** is on, runs only record what would be marked. Open *History* to see the entries and the rule that matched each one.
 - The dashboard has a **Dry run: ON/OFF** switch. Turning dry-run OFF asks for confirmation, because scheduled runs will then mark entries as read.
 - **Run now** follows the dry-run setting. **Force run** applies the marks immediately, even with dry-run on.
+- While a run is active the dashboard waits for it to finish and then reloads, so the tables show its results.
 
 ## Schedule
 

@@ -30,24 +30,24 @@
 </table>
 {% endmacro %}
 
-{% macro add_form(scope, action, label) %}
+{% macro add_form(scope, action, label, prefill=none) %}
 <form method="post" action="/scope">
   <input type="hidden" name="scope" value="{{ scope }}">
   <input type="hidden" name="action" value="{{ action }}">
   <select name="field">
-    <option value="title">title</option>
-    <option value="content">content</option>
-    <option value="author">author</option>
-    <option value="url">url</option>
+    <option value="title" {{ "selected" if prefill and prefill.field == "title" }}>title</option>
+    <option value="content" {{ "selected" if prefill and prefill.field == "content" }}>content</option>
+    <option value="author" {{ "selected" if prefill and prefill.field == "author" }}>author</option>
+    <option value="url" {{ "selected" if prefill and prefill.field == "url" }}>url</option>
   </select>
   <select name="op">
-    <option value="contains">contains</option>
-    <option value="starts_with">starts with</option>
-    <option value="equals">equals</option>
-    <option value="regex">regex</option>
+    <option value="contains" {{ "selected" if prefill and prefill.op == "contains" }}>contains</option>
+    <option value="starts_with" {{ "selected" if prefill and prefill.op == "starts_with" }}>starts with</option>
+    <option value="equals" {{ "selected" if prefill and prefill.op == "equals" }}>equals</option>
+    <option value="regex" {{ "selected" if prefill and prefill.op == "regex" }}>regex</option>
   </select>
-  <input name="value" required size="40" placeholder="value (case-insensitive)">
-  <input name="comment" size="20" placeholder="comment">
+  <input name="value" required size="40" placeholder="value (case-insensitive)" value="{{ prefill.value if prefill else '' }}">
+  <input name="comment" size="20" placeholder="comment" value="{{ prefill.comment if prefill else '' }}">
   <button>{{ label }}</button>
   <button formaction="/scope/preview" formmethod="post">Preview matches</button>
 </form>
@@ -98,11 +98,11 @@
 
 <h2>Blacklist rules{% if kind == "feed" and not override %} <span class="muted">(not overriding: folder rules apply){% endif %}</span></h2>
 {{ rule_rows(scope, "rules", own_rules) }}
-{{ add_form(scope, "add_rule", "Add rule") }}
+{{ add_form(scope, "add_rule", "Add rule", rule if preview else none) }}
 
 <h2>Whitelist (never marked)</h2>
 {{ rule_rows(scope, "whitelist", own_whitelist) }}
-{{ add_form(scope, "add_whitelist", "Add exception") }}
+{{ add_form(scope, "add_whitelist", "Add exception", rule if preview else none) }}
 
 <h2>Effective rules</h2>
 <table class="sortable">

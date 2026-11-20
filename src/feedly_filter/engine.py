@@ -172,14 +172,17 @@ class Engine:
 
     def run_in_background(self, feed_ids: list[str] | None = None, dry_run: bool | None = None) -> bool:
         """Start a run without blocking the web request. False if a run is already active."""
-        if self.is_running():
+        # The lock is taken before the thread starts, so is_running() is already true when this returns.
+        if not self._run_lock.acquire(blocking=False):
             return False
 
         def target() -> None:
             try:
-                self.run(feed_ids, dry_run)
-            except (FeedlyError, RunBusy) as error:
+                self._run(feed_ids, dry_run)
+            except FeedlyError as error:
                 log.warning("background run stopped: %s", error)
+            finally:
+                self._run_lock.release()
 
         threading.Thread(target=target, name="manual-run", daemon=True).start()
         return True

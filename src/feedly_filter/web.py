@@ -297,14 +297,30 @@ def create_app(services: Services) -> FastAPI:
     async def run_now(request: Request):
         form = await request.form()
         feed_id = str(form.get("feed_id", ""))
+        folder = str(form.get("folder", ""))
         # "force" applies the marks now, even when dry-run is on; "normal" follows the dry-run setting.
         force = form.get("mode") == "force"
-        started = engine.run_in_background([feed_id] if feed_id else None, dry_run=False if force else None)
+        feed_ids = [feed_id] if feed_id else None
+        label = ""
+        if folder:
+            refresh_error = refresh_catalog_message()
+            if refresh_error:
+                return back("/", refresh_error, is_error=True)
+            # An empty list would mean "all feeds", so a folder without feeds is refused.
+            feed_ids = [info.id for info in engine.catalog.values() if info.folder == folder]
+            if not feed_ids:
+                return back("/", f"Folder {folder} has no feeds", is_error=True)
+            label = f" for folder {folder}"
+        started = engine.run_in_background(feed_ids, dry_run=False if force else None)
         if not started:
             return back("/", "A run is already in progress", is_error=True)
         if force:
-            return back("/", "Forced run started: entries will be marked as read")
-        return back("/", "Run started")
+            return back("/", f"Forced run started{label}: entries will be marked as read")
+        return back("/", f"Run started{label}")
+
+    @app.get("/run/status")
+    def run_status() -> JSONResponse:
+        return JSONResponse({"running": engine.is_running()})
 
     @app.post("/dry-run")
     async def toggle_dry_run(request: Request):
@@ -396,7 +412,7 @@ def create_app(services: Services) -> FastAPI:
         scope = form.get("scope", "global")
         try:
             rule = Rule(field=form.get("field", "title"), op=form.get("op", "contains"),
-                        value=form.get("value", ""))
+                        value=form.get("value", ""), comment=form.get("comment", ""))
             preview = engine.preview_rule(scope, rule)
         except (ValueError, FeedlyError) as error:
             return back(scope_url(scope), f"Preview failed: {error}", is_error=True)
